@@ -109,12 +109,12 @@ void main() {
       );
       container.read(activeWorkspaceProvider.notifier).select(memberWs);
       await tester.pumpAndSettle();
-      expect(find.text('Member Experience'), findsOneWidget);
+      expect(find.text('Digital Access Pass'), findsOneWidget);
 
       // Member attempting /ops/dashboard is redirected back to /member/home
       container.read(appRouterProvider).go(AppRoutes.opsDashboard);
       await tester.pumpAndSettle();
-      expect(find.text('Member Experience'), findsOneWidget);
+      expect(find.text('Digital Access Pass'), findsOneWidget);
     },
   );
 

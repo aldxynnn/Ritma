@@ -31,3 +31,7 @@ This document records verified architectural, security, and product decisions ma
 
 ### D-007: Strict Separation of Real Auth vs Demo Sandbox
 - **Decision:** Never implement fake production authentication. When `!hasSupabaseConfig && !enableDemoMode`, the app routes honestly to `BackendSetupScreen` with configuration instructions. When `ENABLE_DEMO_MODE=true` in non-production builds (`!isProduction`), `DemoSandboxAuthRepository` provides an explicitly badged multi-role sandbox for local UI verification without backend credentials.
+
+### D-008: Pure-Dart QR Rendering & Keyboard-Wedge/Paste Reception Validation
+- **Context:** Native mobile camera scanner plugins frequently introduce Android SDK / Gradle incompatibilities and cannot run identically in Web desktop reception consoles or automated `flutter test` suites.
+- **Decision:** Use pure-Dart `qr_flutter ^4.1.0` + `crypto ^3.0.8` HMAC-SHA256 tokens (`issueMemberQrToken` / `validateAndCheckIn`) paired with copyable QR pass tokens on Member Pass and keyboard-wedge/paste QR scanner input + live member lookup at Reception (`FrontDeskCheckInView`), delivering full Android, iOS, and Web parity cleanly.

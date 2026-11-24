@@ -6,6 +6,12 @@
 - Published initial checkpoint commit `6912f93` to `origin/main` (`https://github.com/aldxynnn/Ritma.git`).
 - Added `.gitattributes` for consistent cross-platform line endings.
 
+### Core Engines & Live Operations — Wave 2 (Phase 5)
+- Implemented `facility_access` slice: live rotating QR pass rendering (`qr_flutter` + HMAC-SHA256, `MemberPassView`) with separate Facility vs Class/PT wallet indicators, `FrontDeskCheckInView` supporting QR validation, replay/cooldown/branch denials, manual lookup, mandatory-reason override, and visit checkout.
+- Implemented `booking` slice: chronological `MemberScheduleBrowseView`, `MemberBookingsListView` with cutoff-aware refunds, and `OpsScheduleRosterView` supporting session creation/cancellation, FIFO waitlist auto-promotion, and instructor attendance marking (`_SessionRosterSheet`).
+- Implemented `dashboard` slice: live `LiveOpsDashboardView` (`7d`/`30d` window) reading strictly computed metrics (`active_members`, `today_visits`, `class_occupancy_pct`, `window_revenue_minor`, `expiring_entitlements_7d`) and recent branch check-ins.
+- Verified end-to-end across core domain journeys and responsive dark-theme `1.5x` widget suites (`dart format` `127 files`, `flutter analyze` `0 issues`, `26/26` tests).
+
 ### Core Operations Vertical Slices — Wave 1 (Phase 5)
 - Added shared non-production `DemoSandboxEngine` mirroring the four separated PostgreSQL domain engines (`Entitlements`, `Facility Access`, `Booking`, `Credit Ledger`).
 - Implemented `organizations` slice: `CreateOrganizationSheet`, `OrgBranchManagementScreen` (Branches, Rooms, consent-based Staff Invitations via `invite_user_to_organization`), `SupabaseOrganizationRepository`, and `DemoSandboxOrganizationRepository`.

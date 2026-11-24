@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -7,6 +9,9 @@ import '../../features/auth/domain/auth_user.dart';
 import '../../features/auth/domain/ritma_role.dart';
 import '../../features/auth/domain/user_profile.dart';
 import '../../features/auth/domain/workspace_context.dart';
+import '../../features/booking/domain/booking_models.dart';
+import '../../features/dashboard/domain/operational_metrics_model.dart';
+import '../../features/facility_access/domain/facility_access_models.dart';
 import '../../features/members/domain/member_model.dart';
 import '../../features/organizations/domain/branch_model.dart';
 import '../../features/organizations/domain/organization_invitation_result.dart';
@@ -60,6 +65,19 @@ class DemoSandboxEngine {
   final Map<String, String> _assignIdempotency = <String, String>{};
   final Map<String, _AdjustmentRecord> _adjustmentIdempotency =
       <String, _AdjustmentRecord>{};
+
+  final Map<String, String> _orgSigningSecrets = <String, String>{};
+  final Set<String> _usedQrNonces = <String>{};
+  final List<FacilityVisitModel> facilityVisits = <FacilityVisitModel>[];
+  final Map<String, _CheckInReplay> _checkInIdempotency =
+      <String, _CheckInReplay>{};
+
+  final Map<String, ClassSessionModel> classSessions =
+      <String, ClassSessionModel>{};
+  final List<ClassBookingModel> classBookings = <ClassBookingModel>[];
+  final Map<String, BookingActionOutcome> _bookingIdempotency =
+      <String, BookingActionOutcome>{};
+  final List<_DemoPaymentRecord> _paymentRecords = <_DemoPaymentRecord>[];
 
   static const String seedOrgId = '11111111-1111-1111-1111-111111111111';
   static const String seedBranchDowntownId =
@@ -316,6 +334,44 @@ class DemoSandboxEngine {
       organizationId: seedOrgId,
       memberId: member2Id,
     );
+
+    _orgSigningSecrets[seedOrgId] = _uuid.v4();
+
+    final now = DateTime.now().toUtc();
+    const s1Id = '77777777-7777-7777-7777-777777777701';
+    const s2Id = '77777777-7777-7777-7777-777777777702';
+
+    classSessions[s1Id] = ClassSessionModel(
+      id: s1Id,
+      organizationId: seedOrgId,
+      branchId: seedBranchDowntownId,
+      roomId: '33333333-3333-3333-3333-333333333301',
+      classTypeId: reformerId,
+      instructorUserId: ownerUser.id,
+      instructorDisplayName: 'Alina Santoso',
+      title: 'Morning Reformer Foundations',
+      startsAt: now.add(const Duration(days: 1, hours: 2)),
+      endsAt: now.add(const Duration(days: 1, hours: 3)),
+      capacity: 12,
+      creditCost: 1,
+      cancellationCutoffAt: now.add(const Duration(hours: 14)),
+    );
+
+    classSessions[s2Id] = ClassSessionModel(
+      id: s2Id,
+      organizationId: seedOrgId,
+      branchId: seedBranchWestsideId,
+      roomId: '33333333-3333-3333-3333-333333333302',
+      classTypeId: hiitId,
+      instructorUserId: ownerUser.id,
+      instructorDisplayName: 'Alina Santoso',
+      title: 'Kinetic Conditioning 50',
+      startsAt: now.add(const Duration(days: 2, hours: 4)),
+      endsAt: now.add(const Duration(days: 2, hours: 5)),
+      capacity: 16,
+      creditCost: 1,
+      cancellationCutoffAt: now.add(const Duration(days: 1, hours: 16)),
+    );
   }
 
   static List<String> permissionsForRole(RitmaRole role) {
@@ -478,6 +534,7 @@ class DemoSandboxEngine {
       currencyCode: currencyCode.trim().toUpperCase(),
       status: 'active',
     );
+    _orgSigningSecrets[orgId] = _uuid.v4();
 
     branches[branchId] = BranchModel(
       id: branchId,
@@ -805,6 +862,14 @@ class DemoSandboxEngine {
             : null,
       ),
     );
+    _paymentRecords.add(
+      _DemoPaymentRecord(
+        organizationId: orgId,
+        branchId: branchId,
+        amountMinor: pkg.priceMinor,
+        paidAt: DateTime.now().toUtc(),
+      ),
+    );
 
     for (final rule in pkg.rules) {
       if (rule.entitlementKind == EntitlementKind.facilityAccess ||
@@ -1112,6 +1177,1077 @@ class DemoSandboxEngine {
     );
   }
 
+  // -------------------------------------------------------------------------
+  // Facility Access & Rotating QR Engine
+  // -------------------------------------------------------------------------
+
+  String _b64UrlEncode(List<int> bytes) =>
+      base64UrlEncode(bytes).replaceAll('=', '');
+
+  List<int> _b64UrlDecode(String input) {
+    final rem = input.length % 4;
+    final padded = rem == 0 ? input : '$input${'=' * (4 - rem)}';
+    return base64Url.decode(padded);
+  }
+
+  QrPassToken issueMemberQrToken({
+    required String orgId,
+    required String memberId,
+  }) {
+    requireCurrentUser();
+    final member = members[memberId];
+    if (member == null ||
+        member.organizationId != orgId ||
+        member.status == MemberStatus.archived) {
+      throw const AppException(
+        AppFailure.notFound(message: 'Member not found.'),
+      );
+    }
+
+    final secret = _orgSigningSecrets.putIfAbsent(orgId, _uuid.v4);
+    final issuedAt = DateTime.now().toUtc();
+    final expiresAt = issuedAt.add(const Duration(seconds: 60));
+    final issuedEpoch = issuedAt.millisecondsSinceEpoch ~/ 1000;
+    final expiresEpoch = expiresAt.millisecondsSinceEpoch ~/ 1000;
+    final nonce = _uuid.v4().replaceAll('-', '').substring(0, 16);
+
+    final payload = '$orgId|$memberId|$issuedEpoch|$expiresEpoch|1|$nonce';
+    final payloadB64 = _b64UrlEncode(utf8.encode(payload));
+    final sigBytes = Hmac(
+      sha256,
+      utf8.encode(secret),
+    ).convert(utf8.encode(payloadB64)).bytes;
+    final token = 'v1.$payloadB64.${_b64UrlEncode(sigBytes)}';
+
+    return QrPassToken(
+      token: token,
+      issuedAt: issuedAt,
+      expiresAt: expiresAt,
+      ttlSeconds: 60,
+    );
+  }
+
+  CheckInOutcome validateAndCheckIn({
+    required String orgId,
+    required String branchId,
+    required String qrToken,
+    required String idempotencyKey,
+    int cooldownMinutes = 15,
+  }) {
+    requireCurrentUser();
+    final scopedKey = 'qr:$orgId:$idempotencyKey';
+    final fingerprint = '$branchId|$qrToken';
+    final replay = _checkInIdempotency[scopedKey];
+    if (replay != null) {
+      if (replay.fingerprint != fingerprint) {
+        throw const AppException(
+          AppFailure.conflict(
+            message: 'Idempotency key already used for a different check-in.',
+            code: 'IDEMPOTENCY_KEY_REUSED',
+          ),
+        );
+      }
+      return replay.outcome.copyWith(idempotentReplay: true);
+    }
+
+    final parts = qrToken.trim().split('.');
+    if (parts.length != 3 || parts[0] != 'v1') {
+      return const CheckInOutcome(allowed: false, reasonCode: 'QR_MALFORMED');
+    }
+
+    late final String tokenOrgId;
+    late final String memberId;
+    late final int issuedEpoch;
+    late final int expiresEpoch;
+    late final String nonce;
+    late final List<int> sigBytes;
+
+    try {
+      final payload = utf8.decode(_b64UrlDecode(parts[1]));
+      sigBytes = _b64UrlDecode(parts[2]);
+      final fields = payload.split('|');
+      if (fields.length != 6) {
+        return const CheckInOutcome(allowed: false, reasonCode: 'QR_MALFORMED');
+      }
+      tokenOrgId = fields[0];
+      memberId = fields[1];
+      issuedEpoch = int.parse(fields[2]);
+      expiresEpoch = int.parse(fields[3]);
+      nonce = fields[5];
+    } catch (_) {
+      return const CheckInOutcome(allowed: false, reasonCode: 'QR_MALFORMED');
+    }
+
+    if (tokenOrgId != orgId) {
+      return const CheckInOutcome(
+        allowed: false,
+        reasonCode: 'QR_ORG_MISMATCH',
+      );
+    }
+
+    final secret = _orgSigningSecrets[orgId];
+    if (secret == null) {
+      return const CheckInOutcome(allowed: false, reasonCode: 'QR_INVALID_KEY');
+    }
+
+    final expectedSig = Hmac(
+      sha256,
+      utf8.encode(secret),
+    ).convert(utf8.encode(parts[1])).bytes;
+    if (sigBytes.length != expectedSig.length) {
+      return const CheckInOutcome(
+        allowed: false,
+        reasonCode: 'QR_INVALID_SIGNATURE',
+      );
+    }
+    var diff = 0;
+    for (var i = 0; i < sigBytes.length; i++) {
+      diff |= sigBytes[i] ^ expectedSig[i];
+    }
+    if (diff != 0) {
+      return const CheckInOutcome(
+        allowed: false,
+        reasonCode: 'QR_INVALID_SIGNATURE',
+      );
+    }
+
+    final now = DateTime.now().toUtc();
+    final nowEpoch = now.millisecondsSinceEpoch ~/ 1000;
+    if (expiresEpoch < issuedEpoch ||
+        (expiresEpoch - issuedEpoch) > 65 ||
+        issuedEpoch > nowEpoch + 10) {
+      return const CheckInOutcome(allowed: false, reasonCode: 'QR_MALFORMED');
+    }
+
+    final member = members[memberId];
+    if (member == null || member.organizationId != orgId) {
+      return const CheckInOutcome(
+        allowed: false,
+        reasonCode: 'MEMBER_NOT_FOUND',
+      );
+    }
+
+    if (nowEpoch > expiresEpoch + 10) {
+      return CheckInOutcome(
+        allowed: false,
+        reasonCode: 'QR_TOKEN_EXPIRED',
+        memberName: member.fullName,
+      );
+    }
+
+    final nonceKey = '$orgId:$nonce';
+    if (!_usedQrNonces.add(nonceKey)) {
+      return CheckInOutcome(
+        allowed: false,
+        reasonCode: 'QR_REPLAYED',
+        memberName: member.fullName,
+      );
+    }
+
+    if (member.status == MemberStatus.frozen) {
+      return CheckInOutcome(
+        allowed: false,
+        reasonCode: 'MEMBER_FROZEN',
+        memberName: member.fullName,
+      );
+    }
+    if (member.status != MemberStatus.active) {
+      return CheckInOutcome(
+        allowed: false,
+        reasonCode: 'MEMBER_INACTIVE',
+        memberName: member.fullName,
+      );
+    }
+
+    final clampedCooldown = cooldownMinutes < 1 ? 1 : cooldownMinutes;
+    final cooldownCutoff = now.subtract(Duration(minutes: clampedCooldown));
+    final recentVisit = facilityVisits.any(
+      (v) =>
+          v.organizationId == orgId &&
+          v.branchId == branchId &&
+          v.memberId == memberId &&
+          v.checkedInAt.isAfter(cooldownCutoff),
+    );
+    if (recentVisit) {
+      return CheckInOutcome(
+        allowed: false,
+        reasonCode: 'DUPLICATE_COOLDOWN',
+        memberName: member.fullName,
+      );
+    }
+
+    final activeFacilityEnt = _findActiveFacilityEntitlement(
+      orgId: orgId,
+      branchId: branchId,
+      memberId: memberId,
+      now: now,
+    );
+
+    if (activeFacilityEnt == null) {
+      final hasOtherBranch = entitlements.any(
+        (e) =>
+            e.organizationId == orgId &&
+            e.memberId == memberId &&
+            e.entitlementKind == EntitlementKind.facilityAccess &&
+            e.status == EntitlementStatus.active &&
+            !e.validFrom.isAfter(now) &&
+            e.validUntil.isAfter(now),
+      );
+      return CheckInOutcome(
+        allowed: false,
+        reasonCode: hasOtherBranch
+            ? 'BRANCH_NOT_COVERED'
+            : 'NO_FACILITY_ENTITLEMENT',
+        memberId: memberId,
+        memberName: member.fullName,
+      );
+    }
+
+    final visit = FacilityVisitModel(
+      id: _uuid.v4(),
+      organizationId: orgId,
+      branchId: branchId,
+      memberId: memberId,
+      memberName: member.fullName,
+      entitlementId: activeFacilityEnt.id,
+      checkInMethod: 'qr',
+      checkedInAt: now,
+    );
+    facilityVisits.add(visit);
+
+    final outcome = CheckInOutcome(
+      allowed: true,
+      reasonCode: 'OK',
+      visitId: visit.id,
+      memberId: memberId,
+      memberName: member.fullName,
+      entitlementValidUntil: activeFacilityEnt.validUntil,
+    );
+    _checkInIdempotency[scopedKey] = _CheckInReplay(
+      fingerprint: fingerprint,
+      outcome: outcome,
+    );
+    return outcome;
+  }
+
+  CheckInOutcome manualCheckIn({
+    required String orgId,
+    required String branchId,
+    required String memberId,
+    required String idempotencyKey,
+    bool forceOverride = false,
+    String? reason,
+  }) {
+    requireCurrentUser();
+    if (forceOverride && (reason == null || reason.trim().isEmpty)) {
+      throw const AppException(
+        AppFailure.validation(message: 'Override reason is required.'),
+      );
+    }
+
+    final scopedKey = 'manual:$orgId:$idempotencyKey';
+    final fingerprint = '$branchId|$memberId|$forceOverride';
+    final replay = _checkInIdempotency[scopedKey];
+    if (replay != null) {
+      if (replay.fingerprint != fingerprint) {
+        throw const AppException(
+          AppFailure.conflict(
+            message: 'Idempotency key already used for a different check-in.',
+            code: 'IDEMPOTENCY_KEY_REUSED',
+          ),
+        );
+      }
+      return replay.outcome.copyWith(idempotentReplay: true);
+    }
+
+    final member = members[memberId];
+    if (member == null ||
+        member.organizationId != orgId ||
+        member.status == MemberStatus.archived) {
+      throw const AppException(
+        AppFailure.notFound(message: 'Member not found.'),
+      );
+    }
+
+    if (!forceOverride) {
+      if (member.status == MemberStatus.frozen) {
+        return CheckInOutcome(
+          allowed: false,
+          reasonCode: 'MEMBER_FROZEN',
+          memberName: member.fullName,
+        );
+      }
+      if (member.status != MemberStatus.active) {
+        return CheckInOutcome(
+          allowed: false,
+          reasonCode: 'MEMBER_INACTIVE',
+          memberName: member.fullName,
+        );
+      }
+    }
+
+    final now = DateTime.now().toUtc();
+    final activeEnt = _findActiveFacilityEntitlement(
+      orgId: orgId,
+      branchId: branchId,
+      memberId: memberId,
+      now: now,
+    );
+
+    if (activeEnt == null && !forceOverride) {
+      return CheckInOutcome(
+        allowed: false,
+        reasonCode: 'NO_FACILITY_ENTITLEMENT',
+        memberId: memberId,
+        memberName: member.fullName,
+      );
+    }
+
+    final isOverride =
+        activeEnt == null || member.status != MemberStatus.active;
+    final visit = FacilityVisitModel(
+      id: _uuid.v4(),
+      organizationId: orgId,
+      branchId: branchId,
+      memberId: memberId,
+      memberName: member.fullName,
+      entitlementId: activeEnt?.id,
+      checkInMethod: isOverride ? 'manual_override' : 'manual',
+      overrideReason: isOverride ? reason?.trim() : null,
+      checkedInAt: now,
+    );
+    facilityVisits.add(visit);
+
+    final outcome = CheckInOutcome(
+      allowed: true,
+      reasonCode: 'OK',
+      visitId: visit.id,
+      memberId: memberId,
+      memberName: member.fullName,
+      entitlementValidUntil: activeEnt?.validUntil,
+    );
+    _checkInIdempotency[scopedKey] = _CheckInReplay(
+      fingerprint: fingerprint,
+      outcome: outcome,
+    );
+    return outcome;
+  }
+
+  void checkOutVisit({required String orgId, required String visitId}) {
+    requireCurrentUser();
+    final idx = facilityVisits.indexWhere(
+      (v) => v.id == visitId && v.organizationId == orgId,
+    );
+    if (idx < 0) {
+      throw const AppException(
+        AppFailure.notFound(message: 'Facility visit not found.'),
+      );
+    }
+    final visit = facilityVisits[idx];
+    facilityVisits[idx] = visit.copyWith(
+      checkedOutAt: visit.checkedOutAt ?? DateTime.now().toUtc(),
+    );
+  }
+
+  List<CheckInMemberLookup> lookupMembersForCheckIn({
+    required String orgId,
+    required String query,
+  }) {
+    requireCurrentUser();
+    final q = query.trim().toLowerCase();
+    if (q.length < 2) {
+      return const <CheckInMemberLookup>[];
+    }
+    return members.values
+        .where(
+          (m) =>
+              m.organizationId == orgId &&
+              m.status != MemberStatus.archived &&
+              (m.fullName.toLowerCase().contains(q) ||
+                  m.memberCode.toLowerCase().contains(q)),
+        )
+        .map(
+          (m) => CheckInMemberLookup(
+            id: m.id,
+            memberCode: m.memberCode,
+            fullName: m.fullName,
+            homeBranchId: m.homeBranchId,
+            status: m.status.name,
+          ),
+        )
+        .toList();
+  }
+
+  MemberEntitlementModel? _findActiveFacilityEntitlement({
+    required String orgId,
+    required String branchId,
+    required String memberId,
+    required DateTime now,
+  }) {
+    for (final e in entitlements) {
+      if (e.organizationId == orgId &&
+          e.memberId == memberId &&
+          e.entitlementKind == EntitlementKind.facilityAccess &&
+          e.status == EntitlementStatus.active &&
+          !e.validFrom.isAfter(now) &&
+          e.validUntil.isAfter(now)) {
+        if (e.branchAccessScope == BranchAccessScope.allBranches ||
+            e.allowedBranchIds.contains(branchId)) {
+          return e;
+        }
+      }
+    }
+    return null;
+  }
+
+  // -------------------------------------------------------------------------
+  // Studio Booking, Waitlist & Attendance Engine
+  // -------------------------------------------------------------------------
+
+  ClassSessionModel createClassSession({
+    required String orgId,
+    required String branchId,
+    required String roomId,
+    required String classTypeId,
+    required String title,
+    required DateTime startsAt,
+    required DateTime endsAt,
+    required int capacity,
+    required int creditCost,
+    required DateTime cancellationCutoffAt,
+    bool waitlistEnabled = true,
+    String? instructorUserId,
+    String instructorDisplayName = '',
+  }) {
+    requireCurrentUser();
+    if (!endsAt.isAfter(startsAt) ||
+        cancellationCutoffAt.isAfter(startsAt) ||
+        capacity <= 0) {
+      throw const AppException(
+        AppFailure.validation(
+          message: 'Invalid class session times or capacity.',
+        ),
+      );
+    }
+    final session = ClassSessionModel(
+      id: _uuid.v4(),
+      organizationId: orgId,
+      branchId: branchId,
+      roomId: roomId,
+      classTypeId: classTypeId,
+      instructorUserId: instructorUserId,
+      instructorDisplayName: instructorDisplayName,
+      title: title.trim(),
+      startsAt: startsAt,
+      endsAt: endsAt,
+      capacity: capacity,
+      creditCost: creditCost,
+      cancellationCutoffAt: cancellationCutoffAt,
+      waitlistEnabled: waitlistEnabled,
+    );
+    classSessions[session.id] = session;
+    return session;
+  }
+
+  BookingActionOutcome bookClassSession({
+    required String orgId,
+    required String sessionId,
+    required String memberId,
+    required String idempotencyKey,
+  }) {
+    requireCurrentUser();
+    final scopedKey = 'book:$orgId:$idempotencyKey';
+    final replay = _bookingIdempotency[scopedKey];
+    if (replay != null) {
+      return replay.copyWith(idempotentReplay: true);
+    }
+
+    final session = classSessions[sessionId];
+    if (session == null || session.organizationId != orgId) {
+      throw const AppException(
+        AppFailure.notFound(message: 'Class session not found.'),
+      );
+    }
+    final member = members[memberId];
+    if (member == null ||
+        member.organizationId != orgId ||
+        member.status != MemberStatus.active) {
+      throw const AppException(
+        AppFailure.conflict(
+          message: 'Active member status required to book classes.',
+          code: 'MEMBER_INACTIVE',
+        ),
+      );
+    }
+
+    final now = DateTime.now().toUtc();
+    if (session.status != SessionStatus.scheduled ||
+        !session.startsAt.isAfter(now)) {
+      throw const AppException(
+        AppFailure.conflict(
+          message: 'Class session is not open for booking.',
+          code: 'SESSION_CLOSED',
+        ),
+      );
+    }
+
+    final alreadyBooked = classBookings.any(
+      (b) =>
+          b.sessionId == sessionId &&
+          b.memberId == memberId &&
+          (b.status == BookingStatus.confirmed ||
+              b.status == BookingStatus.waitlisted),
+    );
+    if (alreadyBooked) {
+      throw const AppException(
+        AppFailure.conflict(
+          message: 'Member already holds an active or waitlisted booking.',
+          code: 'ALREADY_BOOKED',
+        ),
+      );
+    }
+
+    if (session.confirmedCount < session.capacity) {
+      final bookingId = _uuid.v4();
+      final consumed = _consumeMemberClassCredits(
+        orgId: orgId,
+        branchId: session.branchId,
+        classTypeId: session.classTypeId,
+        memberId: memberId,
+        cost: session.creditCost,
+        bookingId: bookingId,
+        reason: 'Class booked: ${session.title}',
+      );
+      if (!consumed) {
+        throw const AppException(
+          AppFailure.conflict(
+            message: 'Insufficient eligible class credits or active pass.',
+            code: 'INSUFFICIENT_CREDITS',
+          ),
+        );
+      }
+
+      classBookings.add(
+        ClassBookingModel(
+          id: bookingId,
+          organizationId: orgId,
+          branchId: session.branchId,
+          sessionId: sessionId,
+          memberId: memberId,
+          status: BookingStatus.confirmed,
+          creditCost: session.creditCost,
+          bookedAt: now,
+        ),
+      );
+      classSessions[sessionId] = session.copyWith(
+        confirmedCount: session.confirmedCount + 1,
+      );
+
+      final outcome = BookingActionOutcome(
+        bookingId: bookingId,
+        status: BookingStatus.confirmed,
+      );
+      _bookingIdempotency[scopedKey] = outcome;
+      return outcome;
+    } else if (session.waitlistEnabled) {
+      var maxPos = 0;
+      for (final b in classBookings) {
+        if (b.sessionId == sessionId &&
+            b.status == BookingStatus.waitlisted &&
+            (b.waitlistPosition ?? 0) > maxPos) {
+          maxPos = b.waitlistPosition!;
+        }
+      }
+      final nextPos = maxPos + 1;
+      final bookingId = _uuid.v4();
+      classBookings.add(
+        ClassBookingModel(
+          id: bookingId,
+          organizationId: orgId,
+          branchId: session.branchId,
+          sessionId: sessionId,
+          memberId: memberId,
+          status: BookingStatus.waitlisted,
+          waitlistPosition: nextPos,
+          creditCost: session.creditCost,
+          bookedAt: now,
+        ),
+      );
+      final outcome = BookingActionOutcome(
+        bookingId: bookingId,
+        status: BookingStatus.waitlisted,
+        waitlistPosition: nextPos,
+      );
+      _bookingIdempotency[scopedKey] = outcome;
+      return outcome;
+    }
+
+    throw const AppException(
+      AppFailure.conflict(
+        message: 'Class session is full.',
+        code: 'CAPACITY_EXCEEDED',
+      ),
+    );
+  }
+
+  CancelBookingOutcome cancelClassBooking({
+    required String orgId,
+    required String bookingId,
+    String? reason,
+  }) {
+    requireCurrentUser();
+    final bIdx = classBookings.indexWhere(
+      (b) => b.id == bookingId && b.organizationId == orgId,
+    );
+    if (bIdx < 0) {
+      throw const AppException(
+        AppFailure.notFound(message: 'Booking not found.'),
+      );
+    }
+    final booking = classBookings[bIdx];
+    final session = classSessions[booking.sessionId]!;
+
+    if (booking.status == BookingStatus.cancelledEarly ||
+        booking.status == BookingStatus.cancelledLate ||
+        booking.status == BookingStatus.expiredUnpromoted) {
+      return CancelBookingOutcome(
+        status: booking.status,
+        idempotentReplay: true,
+      );
+    }
+
+    final now = DateTime.now().toUtc();
+    if (booking.status == BookingStatus.waitlisted) {
+      classBookings[bIdx] = booking.copyWith(
+        status: BookingStatus.cancelledEarly,
+        waitlistPosition: null,
+        cancelledAt: now,
+      );
+      return const CancelBookingOutcome(status: BookingStatus.cancelledEarly);
+    }
+
+    final isEarly = !now.isAfter(session.cancellationCutoffAt);
+    final newStatus = isEarly
+        ? BookingStatus.cancelledEarly
+        : BookingStatus.cancelledLate;
+
+    classBookings[bIdx] = booking.copyWith(status: newStatus, cancelledAt: now);
+    classSessions[session.id] = session.copyWith(
+      confirmedCount: (session.confirmedCount - 1).clamp(0, session.capacity),
+    );
+
+    var refundedTotal = 0;
+    if (isEarly) {
+      refundedTotal = _refundBookingCredits(
+        orgId: orgId,
+        memberId: booking.memberId,
+        bookingId: bookingId,
+        reason: reason ?? 'Early class cancellation refund',
+      );
+    }
+
+    String? promotedId;
+    final updatedSession = classSessions[session.id]!;
+    if (updatedSession.status == SessionStatus.scheduled &&
+        now.isBefore(updatedSession.startsAt) &&
+        updatedSession.confirmedCount < updatedSession.capacity) {
+      final waitlisted =
+          classBookings
+              .asMap()
+              .entries
+              .where(
+                (e) =>
+                    e.value.sessionId == session.id &&
+                    e.value.status == BookingStatus.waitlisted &&
+                    members[e.value.memberId]?.status == MemberStatus.active,
+              )
+              .toList()
+            ..sort((a, b) {
+              final posCmp = (a.value.waitlistPosition ?? 9999).compareTo(
+                b.value.waitlistPosition ?? 9999,
+              );
+              if (posCmp != 0) {
+                return posCmp;
+              }
+              return a.value.bookedAt.compareTo(b.value.bookedAt);
+            });
+
+      for (final entry in waitlisted) {
+        final ok = _consumeMemberClassCredits(
+          orgId: orgId,
+          branchId: updatedSession.branchId,
+          classTypeId: updatedSession.classTypeId,
+          memberId: entry.value.memberId,
+          cost: updatedSession.creditCost,
+          bookingId: entry.value.id,
+          reason: 'Waitlist promoted: ${updatedSession.title}',
+        );
+        if (ok) {
+          classBookings[entry.key] = entry.value.copyWith(
+            status: BookingStatus.confirmed,
+            waitlistPosition: null,
+            creditCost: updatedSession.creditCost,
+          );
+          classSessions[session.id] = updatedSession.copyWith(
+            confirmedCount: updatedSession.confirmedCount + 1,
+          );
+          promotedId = entry.value.id;
+          break;
+        }
+      }
+    }
+
+    return CancelBookingOutcome(
+      status: newStatus,
+      refundedCredits: refundedTotal,
+      promotedBookingId: promotedId,
+    );
+  }
+
+  void cancelClassSession({
+    required String orgId,
+    required String sessionId,
+    String? reason,
+  }) {
+    requireCurrentUser();
+    final session = classSessions[sessionId];
+    if (session == null || session.organizationId != orgId) {
+      throw const AppException(
+        AppFailure.notFound(message: 'Session not found.'),
+      );
+    }
+    if (session.status == SessionStatus.cancelled) {
+      return;
+    }
+    final now = DateTime.now().toUtc();
+    for (var i = 0; i < classBookings.length; i++) {
+      final b = classBookings[i];
+      if (b.sessionId == sessionId &&
+          (b.status == BookingStatus.confirmed ||
+              b.status == BookingStatus.waitlisted)) {
+        if (b.status == BookingStatus.confirmed) {
+          _refundBookingCredits(
+            orgId: orgId,
+            memberId: b.memberId,
+            bookingId: b.id,
+            reason: reason ?? 'Class session cancelled by studio',
+          );
+        }
+        classBookings[i] = b.copyWith(
+          status: BookingStatus.cancelledEarly,
+          waitlistPosition: null,
+          cancelledAt: now,
+        );
+      }
+    }
+    classSessions[sessionId] = session.copyWith(
+      status: SessionStatus.cancelled,
+      confirmedCount: 0,
+    );
+  }
+
+  List<SessionRosterEntry> getSessionRoster({
+    required String orgId,
+    required String sessionId,
+  }) {
+    requireCurrentUser();
+    final entries = <SessionRosterEntry>[];
+    for (final b in classBookings) {
+      if (b.organizationId == orgId &&
+          b.sessionId == sessionId &&
+          (b.status == BookingStatus.confirmed ||
+              b.status == BookingStatus.waitlisted)) {
+        final member = members[b.memberId];
+        entries.add(
+          SessionRosterEntry(
+            bookingId: b.id,
+            memberId: b.memberId,
+            memberDisplayName: member?.fullName ?? 'Member',
+            memberCode: member?.memberCode ?? '—',
+            status: b.status,
+            attendanceStatus: b.attendanceStatus,
+            waitlistPosition: b.waitlistPosition,
+            bookedAt: b.bookedAt,
+          ),
+        );
+      }
+    }
+    return entries;
+  }
+
+  void markClassAttendance({
+    required String orgId,
+    required String bookingId,
+    required AttendanceStatus attendanceStatus,
+  }) {
+    requireCurrentUser();
+    final idx = classBookings.indexWhere(
+      (b) => b.id == bookingId && b.organizationId == orgId,
+    );
+    if (idx < 0) {
+      throw const AppException(
+        AppFailure.notFound(message: 'Booking not found.'),
+      );
+    }
+    final booking = classBookings[idx];
+    if (booking.status != BookingStatus.confirmed) {
+      throw const AppException(
+        AppFailure.conflict(
+          message: 'Only confirmed bookings can have attendance marked.',
+          code: 'INVALID_STATE',
+        ),
+      );
+    }
+    classBookings[idx] = booking.copyWith(attendanceStatus: attendanceStatus);
+  }
+
+  bool _consumeMemberClassCredits({
+    required String orgId,
+    required String branchId,
+    required String classTypeId,
+    required String memberId,
+    required int cost,
+    required String bookingId,
+    required String reason,
+  }) {
+    if (cost <= 0) {
+      return true;
+    }
+    final now = DateTime.now().toUtc();
+    final hasUnlimited = entitlements.any(
+      (e) =>
+          e.organizationId == orgId &&
+          e.memberId == memberId &&
+          e.entitlementKind == EntitlementKind.unlimitedClass &&
+          e.status == EntitlementStatus.active &&
+          !e.validFrom.isAfter(now) &&
+          e.validUntil.isAfter(now) &&
+          (e.branchAccessScope == BranchAccessScope.allBranches ||
+              e.allowedBranchIds.contains(branchId)),
+    );
+    if (hasUnlimited) {
+      return true;
+    }
+
+    final eligible = <int>[];
+    var totalAvailable = 0;
+    for (var i = 0; i < creditGrants.length; i++) {
+      final g = creditGrants[i];
+      if (g.organizationId == orgId &&
+          g.memberId == memberId &&
+          g.creditType == CreditType.classCredit &&
+          g.status == CreditGrantStatus.active &&
+          g.remainingAmount > 0 &&
+          (g.expiresAt == null || g.expiresAt!.isAfter(now)) &&
+          (g.branchAccessScope == BranchAccessScope.allBranches ||
+              g.allowedBranchIds.contains(branchId)) &&
+          (g.classScope == ClassScope.allClasses ||
+              g.allowedClassTypeIds.contains(classTypeId))) {
+        eligible.add(i);
+        totalAvailable += g.remainingAmount;
+      }
+    }
+
+    if (totalAvailable < cost) {
+      return false;
+    }
+
+    eligible.sort((a, b) {
+      final expA = creditGrants[a].expiresAt;
+      final expB = creditGrants[b].expiresAt;
+      if (expA == null && expB != null) {
+        return 1;
+      }
+      if (expA != null && expB == null) {
+        return -1;
+      }
+      if (expA != null && expB != null) {
+        final cmp = expA.compareTo(expB);
+        if (cmp != 0) {
+          return cmp;
+        }
+      }
+      return creditGrants[a].id.compareTo(creditGrants[b].id);
+    });
+
+    var remaining = cost;
+    for (final idx in eligible) {
+      if (remaining <= 0) {
+        break;
+      }
+      final g = creditGrants[idx];
+      final take = g.remainingAmount < remaining
+          ? g.remainingAmount
+          : remaining;
+      final nextRemaining = g.remainingAmount - take;
+      creditGrants[idx] = g.copyWith(
+        remainingAmount: nextRemaining,
+        status: nextRemaining == 0
+            ? CreditGrantStatus.depleted
+            : CreditGrantStatus.active,
+      );
+      ledgerEntries.add(
+        CreditLedgerEntryModel(
+          id: _uuid.v4(),
+          organizationId: orgId,
+          memberId: memberId,
+          grantId: g.id,
+          creditType: CreditType.classCredit,
+          entryType: LedgerEntryType.consume,
+          delta: -take,
+          referenceType: 'class_booking',
+          referenceId: bookingId,
+          reason: reason,
+          createdAt: now,
+        ),
+      );
+      remaining -= take;
+    }
+    return true;
+  }
+
+  int _refundBookingCredits({
+    required String orgId,
+    required String memberId,
+    required String bookingId,
+    required String reason,
+  }) {
+    final now = DateTime.now().toUtc();
+    var totalRefunded = 0;
+    final consumes = ledgerEntries
+        .where(
+          (l) =>
+              l.organizationId == orgId &&
+              l.referenceType == 'class_booking' &&
+              l.referenceId == bookingId &&
+              l.entryType == LedgerEntryType.consume,
+        )
+        .toList();
+
+    for (final c in consumes) {
+      final gIdx = creditGrants.indexWhere((g) => g.id == c.grantId);
+      if (gIdx < 0) {
+        continue;
+      }
+      final g = creditGrants[gIdx];
+      final alreadyRefunded = ledgerEntries.any(
+        (l) =>
+            l.organizationId == orgId &&
+            l.referenceType == 'class_booking' &&
+            l.referenceId == bookingId &&
+            l.grantId == g.id &&
+            l.entryType == LedgerEntryType.refund,
+      );
+      if (!alreadyRefunded &&
+          (g.status == CreditGrantStatus.active ||
+              g.status == CreditGrantStatus.depleted) &&
+          (g.expiresAt == null || g.expiresAt!.isAfter(now))) {
+        final refundQty = c.delta.abs();
+        creditGrants[gIdx] = g.copyWith(
+          remainingAmount: g.remainingAmount + refundQty,
+          status: CreditGrantStatus.active,
+        );
+        ledgerEntries.add(
+          CreditLedgerEntryModel(
+            id: _uuid.v4(),
+            organizationId: orgId,
+            memberId: memberId,
+            grantId: g.id,
+            creditType: CreditType.classCredit,
+            entryType: LedgerEntryType.refund,
+            delta: refundQty,
+            referenceType: 'class_booking',
+            referenceId: bookingId,
+            reason: reason,
+            createdAt: now,
+          ),
+        );
+        totalRefunded += refundQty;
+      }
+    }
+    return totalRefunded;
+  }
+
+  // -------------------------------------------------------------------------
+  // Live Operational Dashboard Metrics
+  // -------------------------------------------------------------------------
+
+  OperationalMetricsModel getOperationalDashboardMetrics({
+    required String orgId,
+    String? branchId,
+    int windowDays = 30,
+  }) {
+    requireCurrentUser();
+    final now = DateTime.now().toUtc();
+    final todayStart = DateTime.utc(now.year, now.month, now.day);
+    final windowStart = now.subtract(Duration(days: windowDays));
+
+    final activeMembersCount = members.values
+        .where(
+          (m) =>
+              m.organizationId == orgId &&
+              m.status == MemberStatus.active &&
+              (branchId == null || m.homeBranchId == branchId),
+        )
+        .length;
+
+    final todayVisitsCount = facilityVisits
+        .where(
+          (v) =>
+              v.organizationId == orgId &&
+              (branchId == null || v.branchId == branchId) &&
+              !v.checkedInAt.isBefore(todayStart),
+        )
+        .length;
+
+    final revenueMinor = _paymentRecords
+        .where(
+          (p) =>
+              p.organizationId == orgId &&
+              (branchId == null || p.branchId == branchId) &&
+              !p.paidAt.isBefore(windowStart),
+        )
+        .fold<int>(0, (sum, p) => sum + p.amountMinor);
+
+    var capTotal = 0;
+    var confTotal = 0;
+    for (final s in classSessions.values) {
+      if (s.organizationId == orgId &&
+          (branchId == null || s.branchId == branchId) &&
+          s.status != SessionStatus.cancelled &&
+          !s.startsAt.isBefore(windowStart) &&
+          !s.startsAt.isAfter(now.add(const Duration(days: 7)))) {
+        capTotal += s.capacity;
+        confTotal += s.confirmedCount;
+      }
+    }
+
+    final occPct = capTotal > 0
+        ? double.parse(((confTotal / capTotal) * 100).toStringAsFixed(1))
+        : 0.0;
+
+    final expiring7d = entitlements.where((e) {
+      if (e.organizationId != orgId || e.status != EntitlementStatus.active) {
+        return false;
+      }
+      if (branchId != null && members[e.memberId]?.homeBranchId != branchId) {
+        return false;
+      }
+      return e.validUntil.isAfter(now) &&
+          !e.validUntil.isAfter(now.add(const Duration(days: 7)));
+    }).length;
+
+    return OperationalMetricsModel(
+      activeMembers: activeMembersCount,
+      todayVisits: todayVisitsCount,
+      windowRevenueMinor: revenueMinor,
+      classCapacityTotal: capTotal,
+      classConfirmedTotal: confTotal,
+      classOccupancyPct: occPct,
+      expiringEntitlements7d: expiring7d,
+    );
+  }
+
   void dispose() {
     authStreamController.close().ignore();
   }
@@ -1149,6 +2285,27 @@ class _AdjustmentRecord {
   final String memberId;
   final CreditType creditType;
   final int delta;
+}
+
+class _CheckInReplay {
+  const _CheckInReplay({required this.fingerprint, required this.outcome});
+
+  final String fingerprint;
+  final CheckInOutcome outcome;
+}
+
+class _DemoPaymentRecord {
+  const _DemoPaymentRecord({
+    required this.organizationId,
+    required this.branchId,
+    required this.amountMinor,
+    required this.paidAt,
+  });
+
+  final String organizationId;
+  final String branchId;
+  final int amountMinor;
+  final DateTime paidAt;
 }
 
 /// Provides the shared in-memory [DemoSandboxEngine] in Demo Sandbox mode.
