@@ -1,7 +1,7 @@
 # RITMA — Presenter & Tester Demo Guide
 
 **Last Updated:** 2026-11-25  
-**Live Hosted Web Demo:** https://aldxynnn.github.io/Ritma/ (GitHub Pages HTTPS)  
+**Live Hosted Web Demo:** https://ritma-pi.vercel.app (Vercel HTTPS, root base path `/`, clean HTML5 path routing)  
 **Target Supabase Cloud Project:** `ritma` (`ysgdtyexzmliidpiiarh`, `ap-southeast-1`)
 
 ---
@@ -40,37 +40,38 @@ All five demo accounts share the dev/showcase password **`RitmaDemo2026!`** (and
 
 ## 3. Recommended 5-Minute Live Demo Script
 
-1. **Auth & Multi-Role Context (`#/auth/sign-in` → `#/workspaces`)**
+1. **Auth & Multi-Role Context (`/auth/sign-in` → `/workspaces`)**
    - Point out the Editorial Kinetic split hero in Obsidian Dark Mode, click **`Owner (Multi-Role)`** → **Sign In**.
    - On **Select Workspace**, highlight how a single login (`Nadia Kusuma`) holds both **Operations Workspaces** (`Organization Owner • All Branches`) and **Member Passes** (`Fitness Member • SCBD Flagship Gym`).
    - Select **Organization Owner**.
-2. **Operations Console — Live KPIs (`#/ops/dashboard`)**
+2. **Operations Console — Live KPIs (`/ops/dashboard`)**
    - Toggle `7 Days` / `30 Days` (`Active Members: 9`, `Today's Gym Visits: 4`, `Class Occupancy: 8.6%`, `Revenue (30d): $2,055.00`).
    - Show **Recent Check-Ins** with resolved member names and **Upcoming Classes** utilization progress bars.
-3. **Front-Desk QR & Lookup (`#/ops/checkin`)**
+3. **Front-Desk QR & Lookup (`/ops/checkin`)**
    - Highlight active floor pill (`3 Active on Floor`), run **Manual Member Lookup** for `Alya`, and demonstrate `Check In` / `Override` (mandatory audit reason) and `Check Out`.
-4. **Boutique Studio Schedule & Personal Training (`#/ops/schedule`)**
+4. **Boutique Studio Schedule & Personal Training (`/ops/schedule`)**
    - Show `Core & Mobility Restore` (`2/2` + `Waitlist ON`), `Sunrise Vinyasa Flow`, or publish a new class with **New Session** (inline validation + confirmation SnackBar).
    - Switch segmented control to **Personal Training** to show `Coach Maya Putri` & `Coach Dimas Pratama` and PT-credit-backed 1-on-1 sessions.
-5. **Commercial Operations & Entitlement Ledger (`#/ops/members`)**
+5. **Commercial Operations & Entitlement Ledger (`/ops/members`)**
    - Browse the 10-member directory (`Alya Rahma`, `Bima Santoso` `Frozen`), open a member detail sheet to show separated **Facility Access**, **Class Credits**, and **PT Credits** + **Credit Ledger (Append-Only)**.
    - Switch to **Packages** (5 packages spanning all 4 entitlement types) and **Payments** (`$2,055.00` volume with resolved member names).
-6. **Notifications, Equipment & Theme Toggle (`#/ops/settings`)**
+6. **Notifications, Equipment & Theme Toggle (`/ops/settings`)**
    - Tap the AppBar **Bell** icon to view DB-triggered notifications (`Membership Activated`, `Class Booking Confirmed`).
    - Tap the AppBar **Sun/Moon** toggle to preview Light Mode (`Warm Ivory` / `Porcelain`) and switch back to Dark Mode.
    - Open **Branches, Rooms & Staff** and **Equipment & Maintenance** (`6` tracked assets, `2` maintenance tickets).
 7. **Isolated Member Experience (`Switch` → `Fitness Member`)**
    - Click **`Switch`** in the AppBar → select **Fitness Member**.
    - Show the **Digital Access Pass** (`QR` token rotation, `Facility Access Active`, Class vs PT credits, Recent Visits) and Member Schedule / Bookings.
-   - Optionally navigate manually to `#/ops/dashboard` while in Member mode to prove the GoRouter role guard redirects straight back to `#/member/home`.
+   - Optionally navigate manually to `/ops/dashboard` while in Member mode to prove the GoRouter role guard redirects straight back to `/member/home`.
 
 ---
 
 ## 4. Live Hosting, Build Artifacts & Run Commands
 
-### Instant Hosted Web App (No Local Setup Needed)
-- **Live URL:** **https://aldxynnn.github.io/Ritma/** (deployed free on GitHub Pages via orphan `gh-pages` branch built with `--base-href "/Ritma/"`, HTTPS enforced).
-- **Verified Multi-Role Interactive QA on Hosted Bundle:** All 5 demo accounts (`demo.owner@ritma.app`, `demo.manager@ritma.app`, `demo.member@ritma.app`, `demo.trainer1@ritma.app`, `demo.trainer2@ritma.app`) and live actions (Check-In/Check-Out, Class Roster, Member Entitlements, Branch Manager Senopati scoping, Member `Rotate QR`, `/ops/dashboard` route isolation guard, Class Booking + Cancel Credit Refund, and Personal Trainer scoping) passed with **0 HTTP >= 400 / 404** and **0 console errors**.
+### Primary Hosted Web App (Vercel)
+- **Live URL:** **https://ritma-pi.vercel.app** (deployed automatically from GitHub `main` via Vercel project `ritma`, root base path `/`, HTML5 path routing, SPA rewrites in `vercel.json`, public `SUPABASE_URL` & `SUPABASE_ANON_KEY` configured in Vercel environment variables, preview SSO protection enabled only for preview deployments).
+- **Verified Multi-Role Live QA on Vercel:** All 5 demo accounts (`demo.owner@ritma.app`, `demo.manager@ritma.app`, `demo.member@ritma.app`, `demo.trainer1@ritma.app`, `demo.trainer2@ritma.app`) and live actions (Check-In/Check-Out, Schedule Roster, Member Entitlements, Branch Manager Senopati scoping + `/ops/schedule` reload, Member `Rotate QR`, Book + `page.reload()` + Cancel Credit Refund `+1`, `/ops/dashboard` route isolation guard, and Personal Trainers 1 & 2 scoping) passed against Supabase Cloud with **0 console errors** and **0 HTTP 404 responses** (`1` expected server-enforced HTTP `403` RPC on `/ops/dashboard` metrics when Member deep-linked before GoRouter redirected back to `/member/home`).
+- **GitHub Pages Status:** Branch publishing from `gh-pages` was stopped by switching Pages `build_type` to `workflow` (`gh api -X PUT repos/aldxynnn/Ritma/pages -f build_type=workflow`); GitHub REST API rejected `DELETE /pages` with HTTP `422` (`Deactivating GitHub pages for this repository is not allowed`), so final removal of the legacy Pages snapshot is performed in GitHub Web UI via **Settings → Pages → Unpublish site** without deleting any repository, branch, or commit.
 
 ### Development Server (Live Cloud)
 ```powershell
@@ -79,9 +80,8 @@ All five demo accounts share the dev/showcase password **`RitmaDemo2026!`** (and
 
 ### Verified Release Artifacts (Compiled Against `env/dev.json`)
 - **Flutter Web Release Bundle:**
-  - Command (root `/`): `& "C:\src\flutter\bin\flutter.bat" build web --release --dart-define-from-file=env/dev.json --suppress-analytics`
-  - Command (GitHub Pages `/Ritma/`): `& "C:\src\flutter\bin\flutter.bat" build web --release --base-href "/Ritma/" --dart-define-from-file=env/dev.json --suppress-analytics`
-  - Local `build/web/` currently holds the `--base-href "/Ritma/"` bundle for GitHub Pages (`gh-pages`).
+  - Command (root `/`): `& "C:\src\flutter\bin\flutter.bat" build web --release --base-href "/" --dart-define-from-file=env/dev.json --suppress-analytics`
+  - Vercel CI build entrypoint: `scripts/vercel_build.sh` (runs cleanly in `vercel.json`, outputs `build/web` with `<base href="/">`).
 - **Android Release APK:**
   - Command: `& "C:\src\flutter\bin\flutter.bat" build apk --release --dart-define-from-file=env/dev.json --suppress-analytics`
   - Output file: `build/app/outputs/flutter-apk/app-release.apk` (`56.55 MB` / `59,299,750 bytes`, `com.ritma.ritma`, `minSdk 24`, `targetSdk 36`, `android.permission.INTERNET` granted)
