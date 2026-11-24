@@ -72,3 +72,7 @@ supabase/.branches/
 # Node / Supabase CLI local dev dependencies
 node_modules/
 
+# Vercel local CLI link metadata
+.vercel
+
+

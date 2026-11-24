@@ -1,0 +1,14 @@
+# Never upload local secrets, native desktop/mobile trees, backend scripts, or build caches to Vercel
+android/
+ios/
+windows/
+linux/
+macos/
+supabase/
+docs/
+test/
+env/
+build/
+node_modules/
+.dart_tool/
+.vercel/

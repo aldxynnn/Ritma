@@ -8,6 +8,8 @@ import '../core/config/app_env_provider.dart';
 import '../core/logging/app_logger.dart';
 import '../core/network/supabase_provider.dart';
 import 'app.dart';
+import 'url_strategy_stub.dart'
+    if (dart.library.js_interop) 'url_strategy_web.dart';
 
 /// Initializes core runtime infrastructure (logging, global error hooks,
 /// environment config, and optional Supabase client) before mounting [RitmaApp]
@@ -18,6 +20,7 @@ Future<void> bootstrap({AppEnv? envOverride}) async {
   final log = AppLogger.named('bootstrap');
 
   WidgetsFlutterBinding.ensureInitialized();
+  configureAppUrlStrategy();
 
   FlutterError.onError = (details) {
     log.severe('Unhandled Flutter error', details.exception, details.stack);
