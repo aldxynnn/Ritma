@@ -8,6 +8,7 @@ import '../../../core/theme/ritma_theme.dart';
 import '../../../core/widgets/ritma_responsive_scaffold.dart';
 import '../../../core/widgets/ritma_status_pill.dart';
 import '../../auth/application/auth_providers.dart';
+import '../../operations_extras/presentation/notifications_sheet.dart';
 
 class MemberShell extends ConsumerWidget {
   const MemberShell({required this.navigationShell, super.key});
@@ -62,6 +63,7 @@ class MemberShell extends ConsumerWidget {
           ],
         ),
         appBarActions: [
+          const NotificationsBellButton(),
           IconButton(
             tooltip: 'Switch Workspace',
             onPressed: () => context.go(AppRoutes.workspaces),

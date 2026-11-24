@@ -235,7 +235,9 @@ class _FrontDeskCheckInViewState extends ConsumerState<FrontDeskCheckInView> {
         ref.watch(orgBranchesProvider).asData?.value ?? const <BranchModel>[];
     final activeBranchId = _resolveBranchId(workspace.branchId, branches);
     final canPerform = ref.watch(hasPermissionProvider('checkin.perform'));
-    final canOverride = ref.watch(hasPermissionProvider('checkin.override'));
+    final canOverride = ref.watch(
+      hasPermissionProvider('checkin.force_override'),
+    );
     final visitsAsync = ref.watch(branchVisitsProvider);
 
     return SingleChildScrollView(

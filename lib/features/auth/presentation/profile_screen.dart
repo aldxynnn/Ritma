@@ -6,6 +6,7 @@ import '../../../app/router/app_routes.dart';
 import '../../../core/theme/ritma_spacing.dart';
 import '../../../core/widgets/ritma_section_header.dart';
 import '../../../core/widgets/ritma_status_pill.dart';
+import '../../payments/presentation/payments_ledger_view.dart';
 import '../application/auth_providers.dart';
 import '../domain/auth_session_state.dart';
 
@@ -136,6 +137,36 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                   size: 18,
                                 ),
                                 label: const Text('Branches, Rooms & Staff'),
+                              ),
+                            if (workspace.hasPermission('equipment.manage'))
+                              FilledButton.tonalIcon(
+                                onPressed: () =>
+                                    context.push(AppRoutes.opsEquipment),
+                                icon: const Icon(
+                                  Icons.build_circle_outlined,
+                                  size: 18,
+                                ),
+                                label: const Text('Equipment & Maintenance'),
+                              ),
+                            if (workspace.memberId != null)
+                              OutlinedButton.icon(
+                                onPressed: () async {
+                                  await showModalBottomSheet<void>(
+                                    context: context,
+                                    isScrollControlled: true,
+                                    builder: (_) => const SizedBox(
+                                      height: 520,
+                                      child: PaymentsLedgerView(
+                                        forMemberOnly: true,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                icon: const Icon(
+                                  Icons.receipt_long_outlined,
+                                  size: 18,
+                                ),
+                                label: const Text('Payment History'),
                               ),
                           ],
                         ),

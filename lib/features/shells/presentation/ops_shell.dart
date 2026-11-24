@@ -9,6 +9,7 @@ import '../../../core/widgets/ritma_responsive_scaffold.dart';
 import '../../../core/widgets/ritma_status_pill.dart';
 import '../../auth/application/auth_providers.dart';
 import '../../auth/domain/workspace_context.dart';
+import '../../operations_extras/presentation/notifications_sheet.dart';
 
 class _OpsTab {
   const _OpsTab({required this.branchIndex, required this.destination});
@@ -143,6 +144,7 @@ class OpsShell extends ConsumerWidget {
           ],
         ),
         appBarActions: [
+          const NotificationsBellButton(),
           TextButton.icon(
             onPressed: () => context.go(AppRoutes.workspaces),
             icon: const Icon(Icons.swap_horiz, size: 18),

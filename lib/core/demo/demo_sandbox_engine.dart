@@ -13,11 +13,14 @@ import '../../features/booking/domain/booking_models.dart';
 import '../../features/dashboard/domain/operational_metrics_model.dart';
 import '../../features/facility_access/domain/facility_access_models.dart';
 import '../../features/members/domain/member_model.dart';
+import '../../features/operations_extras/domain/operations_extras_models.dart';
 import '../../features/organizations/domain/branch_model.dart';
 import '../../features/organizations/domain/organization_invitation_result.dart';
 import '../../features/organizations/domain/organization_model.dart';
 import '../../features/organizations/domain/room_model.dart';
 import '../../features/packages/domain/package_models.dart';
+import '../../features/payments/domain/payment_record_model.dart';
+import '../../features/personal_training/domain/pt_models.dart';
 import '../errors/app_failure.dart';
 import '../errors/error_mapper.dart';
 
@@ -77,7 +80,20 @@ class DemoSandboxEngine {
   final List<ClassBookingModel> classBookings = <ClassBookingModel>[];
   final Map<String, BookingActionOutcome> _bookingIdempotency =
       <String, BookingActionOutcome>{};
-  final List<_DemoPaymentRecord> _paymentRecords = <_DemoPaymentRecord>[];
+  final List<PaymentRecordModel> paymentRecords = <PaymentRecordModel>[];
+  final Map<String, TrainerProfileModel> trainerProfiles =
+      <String, TrainerProfileModel>{};
+  final List<TrainerAvailabilityModel> trainerAvailabilities =
+      <TrainerAvailabilityModel>[];
+  final Map<String, PtSessionModel> ptSessions = <String, PtSessionModel>{};
+  final Map<String, PtBookingOutcome> _ptIdempotency =
+      <String, PtBookingOutcome>{};
+  final Map<String, EquipmentAssetModel> equipmentAssets =
+      <String, EquipmentAssetModel>{};
+  final Map<String, MaintenanceTicketModel> maintenanceTickets =
+      <String, MaintenanceTicketModel>{};
+  final List<UserNotificationModel> userNotifications =
+      <UserNotificationModel>[];
 
   static const String seedOrgId = '11111111-1111-1111-1111-111111111111';
   static const String seedBranchDowntownId =
@@ -183,6 +199,7 @@ class DemoSandboxEngine {
     const pkgGymId = '55555555-5555-5555-5555-555555555501';
     const pkgPilatesId = '55555555-5555-5555-5555-555555555502';
     const pkgHybridId = '55555555-5555-5555-5555-555555555503';
+    const pkgPtId = '55555555-5555-5555-5555-555555555504';
 
     packages[pkgGymId] = const PackageModel(
       id: pkgGymId,
@@ -372,6 +389,109 @@ class DemoSandboxEngine {
       creditCost: 1,
       cancellationCutoffAt: now.add(const Duration(days: 1, hours: 16)),
     );
+
+    packages[pkgPtId] = const PackageModel(
+      id: pkgPtId,
+      organizationId: seedOrgId,
+      name: '5-Session PT Pack',
+      description:
+          '5 private 1-on-1 Personal Training credits valid at all branches.',
+      packageType: PackageType.ptPack,
+      priceMinor: 32000,
+      currencyCode: 'USD',
+      rules: <PackageEntitlementRuleModel>[
+        PackageEntitlementRuleModel(
+          id: '66666666-6666-6666-6666-666666666605',
+          organizationId: seedOrgId,
+          packageId: pkgPtId,
+          entitlementKind: EntitlementKind.ptCredit,
+          durationDays: 90,
+          creditQuantity: 5,
+          branchAccessScope: BranchAccessScope.allBranches,
+        ),
+      ],
+    );
+
+    const trainer1Id = '88888888-8888-8888-8888-888888888801';
+    trainerProfiles[trainer1Id] = const TrainerProfileModel(
+      id: trainer1Id,
+      organizationId: seedOrgId,
+      userId: 'demo-user-hybrid',
+      homeBranchId: seedBranchDowntownId,
+      bio: 'CSCS strength & athletic conditioning specialist.',
+      specialties: <String>['Strength', 'Mobility', 'Reformer'],
+      defaultCreditCost: 1,
+      displayName: 'Alina Santoso',
+    );
+    for (var day = 0; day <= 6; day++) {
+      trainerAvailabilities.add(
+        TrainerAvailabilityModel(
+          id: '88888888-8888-8888-8888-88888888890$day',
+          organizationId: seedOrgId,
+          branchId: seedBranchDowntownId,
+          trainerId: trainer1Id,
+          weekday: day,
+          startTime: '06:00:00',
+          endTime: '22:00:00',
+        ),
+      );
+    }
+
+    const eq1Id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1';
+    const eq2Id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2';
+    equipmentAssets[eq1Id] = EquipmentAssetModel(
+      id: eq1Id,
+      organizationId: seedOrgId,
+      branchId: seedBranchDowntownId,
+      assetCode: 'DTN-RF-01',
+      name: 'Merrithew V2 Max Reformer #1',
+      category: 'Pilates Reformer',
+      status: EquipmentStatus.needsService,
+      lastServicedAt: now.subtract(const Duration(days: 45)),
+    );
+    equipmentAssets[eq2Id] = EquipmentAssetModel(
+      id: eq2Id,
+      organizationId: seedOrgId,
+      branchId: seedBranchWestsideId,
+      assetCode: 'WST-SQ-01',
+      name: 'Rogue Monster Half Rack',
+      category: 'Strength Rig',
+      status: EquipmentStatus.operational,
+      lastServicedAt: now.subtract(const Duration(days: 12)),
+    );
+    maintenanceTickets['bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1'] =
+        MaintenanceTicketModel(
+          id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1',
+          organizationId: seedOrgId,
+          branchId: seedBranchDowntownId,
+          assetId: eq1Id,
+          summary: 'Carriage spring #3 tension calibration check',
+          priority: TicketPriority.high,
+          status: TicketStatus.open,
+          createdAt: now.subtract(const Duration(hours: 6)),
+        );
+
+    userNotifications.addAll(<UserNotificationModel>[
+      UserNotificationModel(
+        id: 'cccccccc-cccc-cccc-cccc-ccccccccccc1',
+        organizationId: seedOrgId,
+        userId: ownerUser.id,
+        title: 'Equipment service ticket opened',
+        body: 'DTN-RF-01 flagged for spring tension calibration at Downtown Studio.',
+        category: 'equipment',
+        createdAt: now.subtract(const Duration(hours: 5)),
+      ),
+      UserNotificationModel(
+        id: 'cccccccc-cccc-cccc-cccc-ccccccccccc2',
+        organizationId: seedOrgId,
+        userId: memberUser.id,
+        title: 'Welcome to Ritma Flagship Club',
+        body:
+            'Present your rotating QR pass in the Pass tab for gate check-in.',
+        category: 'membership',
+        createdAt: now.subtract(const Duration(days: 1)),
+      ),
+    ]);
   }
 
   static List<String> permissionsForRole(RitmaRole role) {
@@ -862,12 +982,19 @@ class DemoSandboxEngine {
             : null,
       ),
     );
-    _paymentRecords.add(
-      _DemoPaymentRecord(
+    paymentRecords.add(
+      PaymentRecordModel(
+        id: _uuid.v4(),
         organizationId: orgId,
         branchId: branchId,
+        memberId: memberId,
+        subscriptionId: subId,
         amountMinor: pkg.priceMinor,
+        currencyCode: pkg.currencyCode,
+        method: paymentMethod,
+        status: PaymentStatus.paid,
         paidAt: DateTime.now().toUtc(),
+        memberDisplayName: member.fullName,
       ),
     );
 
@@ -2200,11 +2327,12 @@ class DemoSandboxEngine {
         )
         .length;
 
-    final revenueMinor = _paymentRecords
+    final revenueMinor = paymentRecords
         .where(
           (p) =>
               p.organizationId == orgId &&
               (branchId == null || p.branchId == branchId) &&
+              p.status == PaymentStatus.paid &&
               !p.paidAt.isBefore(windowStart),
         )
         .fold<int>(0, (sum, p) => sum + p.amountMinor);
@@ -2246,6 +2374,421 @@ class DemoSandboxEngine {
       classOccupancyPct: occPct,
       expiringEntitlements7d: expiring7d,
     );
+  }
+
+  // -------------------------------------------------------------------------
+  // Personal Training, Equipment Operations & Notifications (Wave 3)
+  // -------------------------------------------------------------------------
+
+  PtBookingOutcome bookPtSession({
+    required String orgId,
+    required String branchId,
+    required String trainerId,
+    required String memberId,
+    required DateTime startsAt,
+    required DateTime endsAt,
+    int? creditCost,
+    required String idempotencyKey,
+  }) {
+    requireCurrentUser();
+    final scopedKey = 'pt:$orgId:$idempotencyKey';
+    final replay = _ptIdempotency[scopedKey];
+    if (replay != null) {
+      return replay.copyWith(idempotentReplay: true);
+    }
+
+    final trainer = trainerProfiles[trainerId];
+    if (trainer == null ||
+        trainer.organizationId != orgId ||
+        !trainer.isActive) {
+      throw const AppException(
+        AppFailure.notFound(message: 'Active trainer profile not found.'),
+      );
+    }
+    if (branchId != trainer.homeBranchId) {
+      throw const AppException(
+        AppFailure.validation(
+          message: 'Trainer does not operate at requested branch.',
+        ),
+      );
+    }
+    final member = members[memberId];
+    if (member == null ||
+        member.organizationId != orgId ||
+        member.status != MemberStatus.active) {
+      throw const AppException(
+        AppFailure.conflict(
+          message: 'Active member status required for PT booking.',
+          code: 'MEMBER_INACTIVE',
+        ),
+      );
+    }
+    final now = DateTime.now().toUtc();
+    if (!startsAt.isAfter(now) || !endsAt.isAfter(startsAt)) {
+      throw const AppException(
+        AppFailure.validation(
+          message: 'PT slot must be in the future with end after start.',
+        ),
+      );
+    }
+
+    final tzOffset = switch (branches[trainer.homeBranchId]?.timezone) {
+      'Asia/Jakarta' => const Duration(hours: 7),
+      _ => Duration.zero,
+    };
+    final localStart = startsAt.toUtc().add(tzOffset);
+    final localEnd = endsAt.toUtc().add(tzOffset);
+    final dow = localStart.weekday % 7;
+    final startMin = localStart.hour * 60 + localStart.minute;
+    final endMin = localEnd.hour * 60 + localEnd.minute;
+
+    int parseMin(String hhmmss) {
+      final parts = hhmmss.split(':');
+      return int.parse(parts[0]) * 60 + int.parse(parts[1]);
+    }
+
+    final sameDay =
+        localStart.year == localEnd.year &&
+        localStart.month == localEnd.month &&
+        localStart.day == localEnd.day;
+    final withinAvailability =
+        sameDay &&
+        trainerAvailabilities.any(
+          (a) =>
+              a.organizationId == orgId &&
+              a.branchId == trainer.homeBranchId &&
+              a.trainerId == trainerId &&
+              a.weekday == dow &&
+              startMin >= parseMin(a.startTime) &&
+              endMin <= parseMin(a.endTime),
+        );
+    if (!withinAvailability) {
+      throw const AppException(
+        AppFailure.validation(
+          message: 'Requested time is outside trainer availability.',
+        ),
+      );
+    }
+
+    final trainerConflict = ptSessions.values.any(
+      (s) =>
+          s.organizationId == orgId &&
+          s.trainerId == trainerId &&
+          s.status == PtSessionStatus.scheduled &&
+          s.startsAt.isBefore(endsAt) &&
+          s.endsAt.isAfter(startsAt),
+    );
+    if (trainerConflict) {
+      throw const AppException(
+        AppFailure.conflict(
+          message: 'Trainer already has an overlapping PT session.',
+          code: 'TRAINER_CONFLICT',
+        ),
+      );
+    }
+
+    final memberConflict = ptSessions.values.any(
+      (s) =>
+          s.organizationId == orgId &&
+          s.memberId == memberId &&
+          s.status == PtSessionStatus.scheduled &&
+          s.startsAt.isBefore(endsAt) &&
+          s.endsAt.isAfter(startsAt),
+    );
+    if (memberConflict) {
+      throw const AppException(
+        AppFailure.conflict(
+          message: 'Member already has an overlapping PT session.',
+          code: 'MEMBER_CONFLICT',
+        ),
+      );
+    }
+
+    final cost = creditCost ?? trainer.defaultCreditCost;
+    if (cost <= 0) {
+      throw const AppException(
+        AppFailure.validation(message: 'Credit cost must be positive.'),
+      );
+    }
+
+    final ptId = _uuid.v4();
+    final consumed = _consumeMemberPtCredits(
+      orgId: orgId,
+      branchId: trainer.homeBranchId,
+      memberId: memberId,
+      cost: cost,
+      ptSessionId: ptId,
+    );
+    if (!consumed) {
+      throw const AppException(
+        AppFailure.conflict(
+          message: 'Available PT credits less than required.',
+          code: 'INSUFFICIENT_PT_CREDITS',
+        ),
+      );
+    }
+
+    ptSessions[ptId] = PtSessionModel(
+      id: ptId,
+      organizationId: orgId,
+      branchId: trainer.homeBranchId,
+      trainerId: trainerId,
+      memberId: memberId,
+      startsAt: startsAt.toUtc(),
+      endsAt: endsAt.toUtc(),
+      creditCost: cost,
+      status: PtSessionStatus.scheduled,
+      trainerDisplayName: trainer.displayName,
+      memberDisplayName: member.fullName,
+    );
+
+    final outcome = PtBookingOutcome(
+      ptSessionId: ptId,
+      status: PtSessionStatus.scheduled,
+      creditCost: cost,
+    );
+    _ptIdempotency[scopedKey] = outcome;
+    return outcome;
+  }
+
+  bool _consumeMemberPtCredits({
+    required String orgId,
+    required String branchId,
+    required String memberId,
+    required int cost,
+    required String ptSessionId,
+  }) {
+    final now = DateTime.now().toUtc();
+    final eligible = <int>[];
+    var totalAvailable = 0;
+
+    for (var i = 0; i < creditGrants.length; i++) {
+      final g = creditGrants[i];
+      if (g.organizationId != orgId ||
+          g.memberId != memberId ||
+          g.creditType != CreditType.ptCredit ||
+          g.status != CreditGrantStatus.active ||
+          g.remainingAmount <= 0 ||
+          (g.expiresAt != null && !g.expiresAt!.isAfter(now))) {
+        continue;
+      }
+      if (g.subscriptionId != null) {
+        final sub = subscriptions
+            .where((s) => s.id == g.subscriptionId)
+            .firstOrNull;
+        if (sub?.status == SubscriptionStatus.frozen) {
+          continue;
+        }
+      }
+      if (g.branchAccessScope != BranchAccessScope.allBranches &&
+          !g.allowedBranchIds.contains(branchId)) {
+        continue;
+      }
+      eligible.add(i);
+      totalAvailable += g.remainingAmount;
+    }
+
+    if (totalAvailable < cost) {
+      return false;
+    }
+
+    eligible.sort((aIdx, bIdx) {
+      final a = creditGrants[aIdx];
+      final b = creditGrants[bIdx];
+      if (a.expiresAt == null && b.expiresAt == null) return 0;
+      if (a.expiresAt == null) return 1;
+      if (b.expiresAt == null) return -1;
+      return a.expiresAt!.compareTo(b.expiresAt!);
+    });
+
+    var remaining = cost;
+    for (final idx in eligible) {
+      if (remaining <= 0) break;
+      final g = creditGrants[idx];
+      final take = remaining < g.remainingAmount
+          ? remaining
+          : g.remainingAmount;
+      final nextRemaining = g.remainingAmount - take;
+      creditGrants[idx] = g.copyWith(
+        remainingAmount: nextRemaining,
+        status: nextRemaining == 0
+            ? CreditGrantStatus.depleted
+            : CreditGrantStatus.active,
+      );
+      ledgerEntries.add(
+        CreditLedgerEntryModel(
+          id: _uuid.v4(),
+          organizationId: orgId,
+          memberId: memberId,
+          grantId: g.id,
+          creditType: CreditType.ptCredit,
+          entryType: LedgerEntryType.consume,
+          delta: -take,
+          referenceType: 'pt_session',
+          referenceId: ptSessionId,
+          reason: 'PT session booked',
+          createdAt: now,
+        ),
+      );
+      remaining -= take;
+    }
+    return true;
+  }
+
+  void completePtSession({
+    required String orgId,
+    required String ptSessionId,
+    String? notes,
+  }) {
+    requireCurrentUser();
+    final pt = ptSessions[ptSessionId];
+    if (pt == null || pt.organizationId != orgId) {
+      throw const AppException(
+        AppFailure.notFound(message: 'PT session not found.'),
+      );
+    }
+    if (pt.status != PtSessionStatus.scheduled) {
+      throw const AppException(
+        AppFailure.conflict(
+          message: 'Only scheduled PT sessions can be completed.',
+          code: 'INVALID_STATE',
+        ),
+      );
+    }
+    ptSessions[ptSessionId] = pt.copyWith(
+      status: PtSessionStatus.completed,
+      notes: notes?.trim().isNotEmpty == true ? notes!.trim() : pt.notes,
+    );
+  }
+
+  EquipmentAssetModel createEquipmentAsset({
+    required String orgId,
+    required String branchId,
+    required String assetCode,
+    required String name,
+    required String category,
+  }) {
+    requireCurrentUser();
+    final code = assetCode.trim().toUpperCase();
+    if (code.isEmpty || name.trim().isEmpty || category.trim().isEmpty) {
+      throw const AppException(
+        AppFailure.validation(
+          message: 'Asset code, name, and category are required.',
+        ),
+      );
+    }
+    final duplicate = equipmentAssets.values.any(
+      (a) => a.organizationId == orgId && a.assetCode.toUpperCase() == code,
+    );
+    if (duplicate) {
+      throw const AppException(
+        AppFailure.conflict(message: 'Equipment asset code already exists.'),
+      );
+    }
+    final asset = EquipmentAssetModel(
+      id: _uuid.v4(),
+      organizationId: orgId,
+      branchId: branchId,
+      assetCode: code,
+      name: name.trim(),
+      category: category.trim(),
+    );
+    equipmentAssets[asset.id] = asset;
+    return asset;
+  }
+
+  EquipmentAssetModel updateEquipmentStatus({
+    required String orgId,
+    required String assetId,
+    required EquipmentStatus status,
+  }) {
+    requireCurrentUser();
+    final existing = equipmentAssets[assetId];
+    if (existing == null || existing.organizationId != orgId) {
+      throw const AppException(
+        AppFailure.notFound(message: 'Equipment asset not found.'),
+      );
+    }
+    final updated = existing.copyWith(
+      status: status,
+      lastServicedAt: status == EquipmentStatus.operational
+          ? DateTime.now().toUtc()
+          : existing.lastServicedAt,
+    );
+    equipmentAssets[assetId] = updated;
+    return updated;
+  }
+
+  MaintenanceTicketModel createMaintenanceTicket({
+    required String orgId,
+    required String branchId,
+    required String assetId,
+    required String summary,
+    TicketPriority priority = TicketPriority.normal,
+  }) {
+    requireCurrentUser();
+    if (summary.trim().isEmpty) {
+      throw const AppException(
+        AppFailure.validation(message: 'Issue summary is required.'),
+      );
+    }
+    final asset = equipmentAssets[assetId];
+    if (asset == null || asset.organizationId != orgId) {
+      throw const AppException(
+        AppFailure.notFound(message: 'Equipment asset not found.'),
+      );
+    }
+    final ticket = MaintenanceTicketModel(
+      id: _uuid.v4(),
+      organizationId: orgId,
+      branchId: branchId,
+      assetId: assetId,
+      summary: summary.trim(),
+      priority: priority,
+      status: TicketStatus.open,
+      createdAt: DateTime.now().toUtc(),
+    );
+    maintenanceTickets[ticket.id] = ticket;
+    return ticket;
+  }
+
+  MaintenanceTicketModel updateTicketStatus({
+    required String orgId,
+    required String ticketId,
+    required TicketStatus status,
+  }) {
+    requireCurrentUser();
+    final existing = maintenanceTickets[ticketId];
+    if (existing == null || existing.organizationId != orgId) {
+      throw const AppException(
+        AppFailure.notFound(message: 'Maintenance ticket not found.'),
+      );
+    }
+    final resolvedAt =
+        (status == TicketStatus.resolved || status == TicketStatus.closed)
+        ? (existing.resolvedAt ?? DateTime.now().toUtc())
+        : null;
+    final updated = existing.copyWith(status: status, resolvedAt: resolvedAt);
+    maintenanceTickets[ticketId] = updated;
+    return updated;
+  }
+
+  void markNotificationRead({required String notificationId}) {
+    final user = requireCurrentUser();
+    final idx = userNotifications.indexWhere(
+      (n) => n.id == notificationId && n.userId == user.id,
+    );
+    if (idx < 0) {
+      throw const AppException(
+        AppFailure.notFound(message: 'Notification not found.'),
+      );
+    }
+    final existing = userNotifications[idx];
+    if (existing.readAt == null) {
+      userNotifications[idx] = existing.copyWith(
+        readAt: DateTime.now().toUtc(),
+      );
+    }
   }
 
   void dispose() {
@@ -2292,20 +2835,6 @@ class _CheckInReplay {
 
   final String fingerprint;
   final CheckInOutcome outcome;
-}
-
-class _DemoPaymentRecord {
-  const _DemoPaymentRecord({
-    required this.organizationId,
-    required this.branchId,
-    required this.amountMinor,
-    required this.paidAt,
-  });
-
-  final String organizationId;
-  final String branchId;
-  final int amountMinor;
-  final DateTime paidAt;
 }
 
 /// Provides the shared in-memory [DemoSandboxEngine] in Demo Sandbox mode.
