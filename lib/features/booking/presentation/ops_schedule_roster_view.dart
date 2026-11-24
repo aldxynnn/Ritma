@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/theme/ritma_spacing.dart';
+import '../../../core/theme/ritma_status_colors.dart';
 import '../../../core/widgets/async_state_view.dart';
 import '../../../core/widgets/ritma_section_header.dart';
 import '../../../core/widgets/ritma_status_pill.dart';
@@ -48,12 +49,21 @@ class OpsScheduleRosterView extends ConsumerWidget {
               trailing: canManage
                   ? FilledButton.icon(
                       onPressed: () async {
-                        final created = await showDialog<bool>(
+                        final created = await showDialog<ClassSessionModel>(
                           context: context,
                           builder: (_) => const _CreateClassSessionDialog(),
                         );
-                        if (created == true) {
+                        if (created != null) {
                           ref.invalidate(classSessionsProvider);
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Session "${created.title}" published.',
+                                ),
+                              ),
+                            );
+                          }
                         }
                       },
                       icon: const Icon(Icons.add, size: 18),
@@ -395,6 +405,8 @@ class _CreateClassSessionDialogState
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _instructorController = TextEditingController();
+  final _newRoomController = TextEditingController(text: 'Main Studio');
+  final _newClassTypeController = TextEditingController(text: 'General Class');
   final _capacityController = TextEditingController(text: '16');
   final _creditCostController = TextEditingController(text: '1');
 
@@ -405,130 +417,358 @@ class _CreateClassSessionDialogState
   int _durationMinutes = 60;
   bool _waitlistEnabled = true;
   bool _saving = false;
+  String? _errorMessage;
 
   @override
   void dispose() {
     _titleController.dispose();
     _instructorController.dispose();
+    _newRoomController.dispose();
+    _newClassTypeController.dispose();
     _capacityController.dispose();
     _creditCostController.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
+    setState(() => _errorMessage = null);
+
     if (!(_formKey.currentState?.validate() ?? false)) {
+      setState(
+        () => _errorMessage =
+            'Please check the highlighted fields before publishing.',
+      );
       return;
     }
+
+    final branchesAsync = ref.read(orgBranchesProvider);
+    final roomsAsync = ref.read(orgRoomsProvider);
+    final classTypesAsync = ref.read(orgClassTypesProvider);
+    if (branchesAsync.isLoading ||
+        roomsAsync.isLoading ||
+        classTypesAsync.isLoading) {
+      setState(
+        () => _errorMessage = 'Still loading branch, room, and class type data. Please wait a moment and try again.',
+      );
+      return;
+    }
+
     final workspace = ref.read(activeWorkspaceProvider);
     final repo = ref.read(bookingRepositoryProvider);
-    if (workspace == null ||
-        repo == null ||
-        _branchId == null ||
-        _roomId == null ||
-        _classTypeId == null) {
+    if (workspace == null || repo == null) {
+      setState(
+        () => _errorMessage =
+            'Booking service is not available for the current session.',
+      );
       return;
     }
+
+    final capacity = int.tryParse(_capacityController.text.trim());
+    final creditCost = int.tryParse(_creditCostController.text.trim());
+    if (capacity == null ||
+        capacity < 1 ||
+        creditCost == null ||
+        creditCost < 1) {
+      setState(
+        () => _errorMessage =
+            'Capacity and credit cost must both be valid numbers (minimum 1).',
+      );
+      return;
+    }
+
+    final branchId = _branchId;
+    if (branchId == null) {
+      setState(
+        () => _errorMessage =
+            'Select an active branch before publishing this session.',
+      );
+      return;
+    }
+
+    final canCreateRoom =
+        workspace.branchId == null && workspace.hasPermission('branch.manage');
+    final canCreateClassType =
+        workspace.branchId == null &&
+        (workspace.hasPermission('schedule.manage') ||
+            workspace.hasPermission('package.manage'));
+
     setState(() => _saving = true);
-    final startsAt = DateTime.now().toUtc().add(
-      Duration(hours: _startOffsetHours),
-    );
-    final endsAt = startsAt.add(Duration(minutes: _durationMinutes));
-    final cutoff = startsAt.subtract(const Duration(hours: 2));
+    try {
+      var resolvedRoomId = _roomId;
+      if (resolvedRoomId == null) {
+        final orgRepo = ref.read(organizationRepositoryProvider);
+        if (!canCreateRoom || orgRepo == null) {
+          if (mounted) {
+            setState(
+              () => _errorMessage = 'No active room exists for this branch. Ask an Organization Owner or Admin to create a room first.',
+            );
+          }
+          return;
+        }
+        final roomResult = await orgRepo.createRoom(
+          orgId: workspace.organizationId,
+          branchId: branchId,
+          name: _newRoomController.text.trim(),
+          roomType: 'studio',
+          defaultCapacity: capacity,
+        );
+        if (!mounted) {
+          return;
+        }
+        final createdRoom = roomResult.when(
+          success: (room) => room,
+          failure: (failure) {
+            setState(
+              () => _errorMessage = 'Unable to create room: ${failure.message}',
+            );
+            return null;
+          },
+        );
+        if (createdRoom == null) {
+          return;
+        }
+        resolvedRoomId = createdRoom.id;
+        _roomId = createdRoom.id;
+        ref.invalidate(orgRoomsProvider);
+      }
 
-    final authState = ref.read(authControllerProvider).asData?.value;
-    final currentUserId = switch (authState) {
-      AuthenticatedSession(:final user) => user.id,
-      _ => null,
-    };
+      var resolvedClassTypeId = _classTypeId;
+      if (resolvedClassTypeId == null) {
+        final pkgRepo = ref.read(packageEntitlementRepositoryProvider);
+        if (!canCreateClassType || pkgRepo == null) {
+          if (mounted) {
+            setState(
+              () => _errorMessage = 'No active class type exists for this organization. Ask an Organization Owner or Admin to add one first.',
+            );
+          }
+          return;
+        }
+        final typeResult = await pkgRepo.createClassType(
+          orgId: workspace.organizationId,
+          name: _newClassTypeController.text.trim(),
+        );
+        if (!mounted) {
+          return;
+        }
+        final createdType = typeResult.when(
+          success: (classType) => classType,
+          failure: (failure) {
+            setState(
+              () => _errorMessage =
+                  'Unable to create class type: ${failure.message}',
+            );
+            return null;
+          },
+        );
+        if (createdType == null) {
+          return;
+        }
+        resolvedClassTypeId = createdType.id;
+        _classTypeId = createdType.id;
+        ref.invalidate(orgClassTypesProvider);
+      }
 
-    final res = await repo.createClassSession(
-      orgId: workspace.organizationId,
-      branchId: _branchId!,
-      roomId: _roomId!,
-      classTypeId: _classTypeId!,
-      title: _titleController.text.trim(),
-      startsAt: startsAt,
-      endsAt: endsAt,
-      capacity: int.parse(_capacityController.text.trim()),
-      creditCost: int.parse(_creditCostController.text.trim()),
-      cancellationCutoffAt: cutoff,
-      waitlistEnabled: _waitlistEnabled,
-      instructorUserId: workspace.roleCode == 'instructor'
-          ? currentUserId
-          : null,
-      instructorDisplayName: _instructorController.text.trim(),
-    );
-    if (!mounted) {
-      return;
+      final startsAt = DateTime.now().toUtc().add(
+        Duration(hours: _startOffsetHours),
+      );
+      final endsAt = startsAt.add(Duration(minutes: _durationMinutes));
+      final cutoff = startsAt.subtract(const Duration(hours: 2));
+
+      final authState = ref.read(authControllerProvider).asData?.value;
+      final currentUserId = switch (authState) {
+        AuthenticatedSession(:final user) => user.id,
+        _ => null,
+      };
+
+      final res = await repo.createClassSession(
+        orgId: workspace.organizationId,
+        branchId: branchId,
+        roomId: resolvedRoomId,
+        classTypeId: resolvedClassTypeId,
+        title: _titleController.text.trim(),
+        startsAt: startsAt,
+        endsAt: endsAt,
+        capacity: capacity,
+        creditCost: creditCost,
+        cancellationCutoffAt: cutoff,
+        waitlistEnabled: _waitlistEnabled,
+        instructorUserId: workspace.roleCode == 'instructor'
+            ? currentUserId
+            : null,
+        instructorDisplayName: _instructorController.text.trim(),
+      );
+      if (!mounted) {
+        return;
+      }
+      res.when(
+        success: (session) => Navigator.of(context).pop(session),
+        failure: (failure) => setState(() => _errorMessage = failure.message),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _saving = false);
+      }
     }
-    setState(() => _saving = false);
-    res.when(
-      success: (_) => Navigator.of(context).pop(true),
-      failure: (failure) =>
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text(failure.message))),
-    );
+  }
+
+  String? _firstError(List<AsyncValue<dynamic>> values) {
+    for (final value in values) {
+      if (value.hasError) {
+        return value.error.toString();
+      }
+    }
+    return null;
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final workspace = ref.watch(activeWorkspaceProvider);
-    final branches =
-        ref.watch(orgBranchesProvider).asData?.value ?? const <BranchModel>[];
-    final rooms =
-        ref.watch(orgRoomsProvider).asData?.value ?? const <RoomModel>[];
+    final branchesAsync = ref.watch(orgBranchesProvider);
+    final roomsAsync = ref.watch(orgRoomsProvider);
+    final classTypesAsync = ref.watch(orgClassTypesProvider);
+
+    final branches = branchesAsync.asData?.value ?? const <BranchModel>[];
+    final rooms = roomsAsync.asData?.value ?? const <RoomModel>[];
     final classTypes =
-        ref.watch(orgClassTypesProvider).asData?.value ??
-        const <ClassTypeModel>[];
+        classTypesAsync.asData?.value ?? const <ClassTypeModel>[];
+
+    final isLoadingPrerequisites =
+        branchesAsync.isLoading ||
+        roomsAsync.isLoading ||
+        classTypesAsync.isLoading;
+    final prerequisiteError = _firstError([
+      branchesAsync,
+      roomsAsync,
+      classTypesAsync,
+    ]);
 
     _branchId ??= workspace?.branchId ?? branches.firstOrNull?.id;
-    final filteredRooms = _branchId == null
-        ? rooms
-        : rooms.where((r) => r.branchId == _branchId).toList();
+    final filteredRooms = rooms
+        .where(
+          (r) => r.isActive && (_branchId == null || r.branchId == _branchId),
+        )
+        .toList();
     if (_roomId == null || !filteredRooms.any((r) => r.id == _roomId)) {
       _roomId = filteredRooms.firstOrNull?.id;
     }
-    _classTypeId ??= classTypes.firstOrNull?.id;
+    final activeClassTypes = classTypes.where((ct) => ct.isActive).toList();
+    if (_classTypeId == null ||
+        !activeClassTypes.any((ct) => ct.id == _classTypeId)) {
+      _classTypeId = activeClassTypes.firstOrNull?.id;
+    }
+
+    final canCreateRoom =
+        workspace != null &&
+        workspace.branchId == null &&
+        workspace.hasPermission('branch.manage');
+    final canCreateClassType =
+        workspace != null &&
+        workspace.branchId == null &&
+        (workspace.hasPermission('schedule.manage') ||
+            workspace.hasPermission('package.manage'));
+    final visibleError = _errorMessage ?? prerequisiteError;
 
     return AlertDialog(
       title: const Text('New Class Session'),
       content: SizedBox(
-        width: 420,
+        width: 440,
         child: Form(
           key: _formKey,
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (isLoadingPrerequisites) ...[
+                  const LinearProgressIndicator(),
+                  const SizedBox(height: RitmaSpacing.sm),
+                ],
+                if (visibleError != null) ...[
+                  Container(
+                    padding: const EdgeInsets.all(RitmaSpacing.sm),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.error.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(RitmaRadius.md),
+                      border: Border.all(color: theme.colorScheme.error),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          visibleError,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.error,
+                          ),
+                        ),
+                        if (prerequisiteError != null) ...[
+                          const SizedBox(height: RitmaSpacing.xs),
+                          TextButton(
+                            onPressed: _saving
+                                ? null
+                                : () {
+                                    ref.invalidate(orgBranchesProvider);
+                                    ref.invalidate(orgRoomsProvider);
+                                    ref.invalidate(orgClassTypesProvider);
+                                  },
+                            child: const Text('Retry loading setup data'),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: RitmaSpacing.sm),
+                ],
                 TextFormField(
                   controller: _titleController,
                   decoration: const InputDecoration(labelText: 'Session Title'),
-                  validator: (v) =>
-                      (v == null || v.trim().isEmpty) ? 'Required' : null,
+                  validator: (v) {
+                    final trimmed = v?.trim() ?? '';
+                    if (trimmed.length < 2) {
+                      return 'Enter at least 2 characters';
+                    }
+                    if (trimmed.length > 120) {
+                      return 'Maximum 120 characters';
+                    }
+                    return null;
+                  },
                 ),
                 const SizedBox(height: RitmaSpacing.xs),
                 if (workspace?.branchId == null && branches.isNotEmpty) ...[
                   DropdownButtonFormField<String>(
+                    key: ValueKey('branch-${_branchId ?? ''}'),
                     initialValue: _branchId,
+                    isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Branch'),
                     items: branches
                         .map(
                           (b) => DropdownMenuItem<String>(
                             value: b.id,
-                            child: Text(b.name),
+                            child: Text(
+                              b.name,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         )
                         .toList(),
                     onChanged: (v) => setState(() {
                       _branchId = v;
                       _roomId = null;
+                      _errorMessage = null;
                     }),
+                  ),
+                  const SizedBox(height: RitmaSpacing.xs),
+                ] else if (!branchesAsync.isLoading && _branchId == null) ...[
+                  const _SetupNoticeBanner(
+                    message: 'No active branch found for this organization. Create a branch first.',
                   ),
                   const SizedBox(height: RitmaSpacing.xs),
                 ],
                 if (filteredRooms.isNotEmpty) ...[
                   DropdownButtonFormField<String>(
+                    key: ValueKey('room-${_branchId ?? ''}-${_roomId ?? ''}'),
                     initialValue: _roomId,
+                    isExpanded: true,
                     decoration: const InputDecoration(
                       labelText: 'Room / Studio',
                     ),
@@ -536,28 +776,90 @@ class _CreateClassSessionDialogState
                         .map(
                           (r) => DropdownMenuItem<String>(
                             value: r.id,
-                            child: Text('${r.name} (cap ${r.defaultCapacity})'),
+                            child: Text(
+                              '${r.name} (cap ${r.defaultCapacity})',
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         )
                         .toList(),
-                    onChanged: (v) => setState(() => _roomId = v),
+                    onChanged: (v) => setState(() {
+                      _roomId = v;
+                      _errorMessage = null;
+                    }),
                   ),
                   const SizedBox(height: RitmaSpacing.xs),
+                ] else if (!roomsAsync.isLoading) ...[
+                  if (canCreateRoom)
+                    TextFormField(
+                      controller: _newRoomController,
+                      decoration: const InputDecoration(
+                        labelText: 'Room / Studio Name',
+                        helperText: 'No rooms in this branch yet — created automatically on publish',
+                      ),
+                      validator: (v) {
+                        final trimmed = v?.trim() ?? '';
+                        if (trimmed.isEmpty) {
+                          return 'Room name is required';
+                        }
+                        if (trimmed.length > 80) {
+                          return 'Maximum 80 characters';
+                        }
+                        return null;
+                      },
+                    )
+                  else
+                    const _SetupNoticeBanner(
+                      message: 'No rooms are configured for this branch yet. Ask an Organization Owner or Admin to create a room in Branches & Rooms.',
+                    ),
+                  const SizedBox(height: RitmaSpacing.xs),
                 ],
-                if (classTypes.isNotEmpty) ...[
+                if (activeClassTypes.isNotEmpty) ...[
                   DropdownButtonFormField<String>(
+                    key: ValueKey('class-type-${_classTypeId ?? ''}'),
                     initialValue: _classTypeId,
+                    isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Class Type'),
-                    items: classTypes
+                    items: activeClassTypes
                         .map(
                           (ct) => DropdownMenuItem<String>(
                             value: ct.id,
-                            child: Text(ct.name),
+                            child: Text(
+                              ct.name,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         )
                         .toList(),
-                    onChanged: (v) => setState(() => _classTypeId = v),
+                    onChanged: (v) => setState(() {
+                      _classTypeId = v;
+                      _errorMessage = null;
+                    }),
                   ),
+                  const SizedBox(height: RitmaSpacing.xs),
+                ] else if (!classTypesAsync.isLoading) ...[
+                  if (canCreateClassType)
+                    TextFormField(
+                      controller: _newClassTypeController,
+                      decoration: const InputDecoration(
+                        labelText: 'Class Type',
+                        helperText: 'No class types yet — created automatically on publish',
+                      ),
+                      validator: (v) {
+                        final trimmed = v?.trim() ?? '';
+                        if (trimmed.length < 2) {
+                          return 'Enter at least 2 characters';
+                        }
+                        if (trimmed.length > 80) {
+                          return 'Maximum 80 characters';
+                        }
+                        return null;
+                      },
+                    )
+                  else
+                    const _SetupNoticeBanner(
+                      message: 'No class types are configured yet. Ask an Organization Owner or Admin to add a class type.',
+                    ),
                   const SizedBox(height: RitmaSpacing.xs),
                 ],
                 TextFormField(
@@ -567,62 +869,95 @@ class _CreateClassSessionDialogState
                   ),
                 ),
                 const SizedBox(height: RitmaSpacing.xs),
-                Row(
-                  children: [
-                    Expanded(
-                      child: DropdownButtonFormField<int>(
-                        initialValue: _startOffsetHours,
-                        decoration: const InputDecoration(labelText: 'Start'),
-                        items: const [
-                          DropdownMenuItem<int>(
-                            value: 3,
-                            child: Text('In 3 hours'),
+                Builder(
+                  builder: (context) {
+                    final startField = DropdownButtonFormField<int>(
+                      key: ValueKey('start-$_startOffsetHours'),
+                      initialValue: _startOffsetHours,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: 'Start'),
+                      items: const [
+                        DropdownMenuItem<int>(
+                          value: 3,
+                          child: Text(
+                            'In 3 hours',
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          DropdownMenuItem<int>(
-                            value: 24,
-                            child: Text('Tomorrow'),
-                          ),
-                          DropdownMenuItem<int>(
-                            value: 48,
-                            child: Text('In 2 days'),
-                          ),
-                        ],
-                        onChanged: (v) {
-                          if (v != null) {
-                            setState(() => _startOffsetHours = v);
-                          }
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: RitmaSpacing.xs),
-                    Expanded(
-                      child: DropdownButtonFormField<int>(
-                        initialValue: _durationMinutes,
-                        decoration: const InputDecoration(
-                          labelText: 'Duration',
                         ),
-                        items: const [
-                          DropdownMenuItem<int>(
-                            value: 45,
-                            child: Text('45 min'),
+                        DropdownMenuItem<int>(
+                          value: 24,
+                          child: Text(
+                            'Tomorrow',
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          DropdownMenuItem<int>(
-                            value: 60,
-                            child: Text('60 min'),
+                        ),
+                        DropdownMenuItem<int>(
+                          value: 48,
+                          child: Text(
+                            'In 2 days',
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          DropdownMenuItem<int>(
-                            value: 75,
-                            child: Text('75 min'),
+                        ),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) {
+                          setState(() => _startOffsetHours = v);
+                        }
+                      },
+                    );
+                    final durationField = DropdownButtonFormField<int>(
+                      key: ValueKey('duration-$_durationMinutes'),
+                      initialValue: _durationMinutes,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: 'Duration'),
+                      items: const [
+                        DropdownMenuItem<int>(
+                          value: 45,
+                          child: Text(
+                            '45 min',
+                            overflow: TextOverflow.ellipsis,
                           ),
+                        ),
+                        DropdownMenuItem<int>(
+                          value: 60,
+                          child: Text(
+                            '60 min',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        DropdownMenuItem<int>(
+                          value: 75,
+                          child: Text(
+                            '75 min',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) {
+                          setState(() => _durationMinutes = v);
+                        }
+                      },
+                    );
+                    final stackFields =
+                        MediaQuery.textScalerOf(context).scale(14) > 16;
+                    if (stackFields) {
+                      return Column(
+                        children: [
+                          startField,
+                          const SizedBox(height: RitmaSpacing.xs),
+                          durationField,
                         ],
-                        onChanged: (v) {
-                          if (v != null) {
-                            setState(() => _durationMinutes = v);
-                          }
-                        },
-                      ),
-                    ),
-                  ],
+                      );
+                    }
+                    return Row(
+                      children: [
+                        Expanded(child: startField),
+                        const SizedBox(width: RitmaSpacing.xs),
+                        Expanded(child: durationField),
+                      ],
+                    );
+                  },
                 ),
                 const SizedBox(height: RitmaSpacing.xs),
                 Row(
@@ -635,7 +970,7 @@ class _CreateClassSessionDialogState
                           labelText: 'Capacity',
                         ),
                         validator: (v) {
-                          final n = int.tryParse(v ?? '');
+                          final n = int.tryParse((v ?? '').trim());
                           return (n == null || n < 1) ? 'Min 1' : null;
                         },
                       ),
@@ -649,7 +984,7 @@ class _CreateClassSessionDialogState
                           labelText: 'Credit Cost',
                         ),
                         validator: (v) {
-                          final n = int.tryParse(v ?? '');
+                          final n = int.tryParse((v ?? '').trim());
                           return (n == null || n < 1) ? 'Min 1' : null;
                         },
                       ),
@@ -669,14 +1004,38 @@ class _CreateClassSessionDialogState
       ),
       actions: [
         TextButton(
-          onPressed: _saving ? null : () => Navigator.of(context).pop(false),
+          onPressed: _saving ? null : () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: _saving ? null : _submit,
+          onPressed: (_saving || isLoadingPrerequisites) ? null : _submit,
           child: Text(_saving ? 'Publishing...' : 'Publish Session'),
         ),
       ],
+    );
+  }
+}
+
+class _SetupNoticeBanner extends StatelessWidget {
+  const _SetupNoticeBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final statusColors = context.statusColors;
+    return Container(
+      padding: const EdgeInsets.all(RitmaSpacing.sm),
+      decoration: BoxDecoration(
+        color: statusColors.warningBg,
+        borderRadius: BorderRadius.circular(RitmaRadius.md),
+        border: Border.all(color: statusColors.warningFg),
+      ),
+      child: Text(
+        message,
+        style: Theme.of(context).textTheme.bodySmall
+            ?.copyWith(color: statusColors.warningFg),
+      ),
     );
   }
 }
