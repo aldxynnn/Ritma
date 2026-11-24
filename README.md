@@ -109,3 +109,21 @@ flutter test
 | [ROADMAP.md](docs/ROADMAP.md) | Phased vertical-slice milestones |
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Environments, secrets, CI/CD blueprint, release discipline |
 | [ADR-0001](docs/ADR/0001-initial-architecture.md) | Foundational architecture decisions and trade-offs |
+| [IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) | Milestone completion & verification ledger |
+| [KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) | External blockers & host tooling notes |
+
+---
+
+## Verified Toolchain, Tests & Build Artifacts
+
+- **Formatting & Static Analysis:**
+  - `dart format --output=none --set-exit-if-changed lib test` (`153 files`, 0 changed)
+  - `flutter analyze --suppress-analytics` (`0 issues`)
+- **Automated Test Suite (`28/28` passing against non-production `DemoSandboxEngine` & widget harnesses):**
+  - Core env, failure mapping, `Result` / `BaseRepository`, auth/multi-role context switching, multi-branch & room setup, member directory/status, entitlement & ledger separation, end-to-end facility QR access/booking/waitlist/attendance/KPIs (`test/e2e_core_workflows_test.dart`), Wave 2 widget rendering (`test/features/wave2_views_test.dart`), and Wave 3 PT/Payments/Equipment/Notifications domains & widgets (`test/features/wave3_modules_test.dart`).
+- **Release Builds Verified on Windows 11 (Flutter 3.47.4 / Dart 3.13.3):**
+  - Web release: `flutter build web --release --suppress-analytics` -> `build/web/index.html` (`1,544` bytes; Wasm dry run succeeded).
+  - Android release APK: `flutter build apk --release --suppress-analytics` -> `build/app/outputs/flutter-apk/app-release.apk` (`59,036,590` bytes / `56.3 MB`).
+  - iOS config verified: `ios/Runner.xcodeproj/project.pbxproj` defines `PRODUCT_BUNDLE_IDENTIFIER = com.ritma.ritma` and `IPHONEOS_DEPLOYMENT_TARGET = 15.0` (`.ipa` compilation requires macOS/Xcode).
+- **External / Environment Limitations (Recorded Honestly):**
+  - Local Docker Desktop is paused and `supabase` CLI is not installed on `PATH`; `env/dev.json` is not provisioned yet. SQL migrations (`000100`–`000500`) and SQL tests (`supabase/tests/01`–`04`) are statically security-audited (`claude-opus-5-5-high` & `gemini-4-hydrogen-xhigh`), not yet executed against a live local/remote Postgres instance. See [KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md).

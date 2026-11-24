@@ -15,6 +15,10 @@
    - **Symptom:** Workspace contains tracked template `env/dev.example.json` only; git-ignored `env/dev.json` has not been populated with a Supabase URL and anon key.
    - **Impact:** Live Supabase email/password sign-in and RPC calls cannot be exercised end-to-end against a remote project until dev credentials or unpaused local Docker Supabase are provided.
 
+3. **iOS Release Build Requires macOS / Xcode**
+   - **Symptom:** Active development host runs Windows 11.
+   - **Impact:** `flutter build web --release` (`build/web/index.html`) and `flutter build apk --release` (`app-release.apk`, `56.3 MB`) compiled cleanly on Windows, whereas iOS `.ipa` building/signing must run on macOS. `ios/Runner.xcodeproj/project.pbxproj` is verified with `PRODUCT_BUNDLE_IDENTIFIER = com.ritma.ritma` and `IPHONEOS_DEPLOYMENT_TARGET = 15.0`.
+
 ---
 
 ## Tooling Notes (Windows Host)

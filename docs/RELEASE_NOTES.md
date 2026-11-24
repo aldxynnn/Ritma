@@ -6,6 +6,13 @@
 - Published initial checkpoint commit `6912f93` to `origin/main` (`https://github.com/aldxynnn/Ritma.git`).
 - Added `.gitattributes` for consistent cross-platform line endings.
 
+### Personal Training, Payments, Equipment & Notifications — Wave 3 (Phase 5) & Release Builds
+- Implemented `personal_training` slice (`PtSessionsView`, `book_pt_session`, `complete_pt_session`) with trainer availability checks, overlap prevention, `pt_credit`-only accounting, and `5-Session PT Pack` catalog support; wired as a toggle inside `OpsScheduleView` and `MemberBookingsView`.
+- Implemented `payments` slice (`PaymentsLedgerView`) reading `payment_records` cleanly across branches (for `payment.read` roles inside `OpsMembersView`) and member self-history (via `ProfileScreen` sheet).
+- Implemented `operations_extras` slice (`EquipmentOperationsScreen` at `/ops/settings/equipment` for `equipment.manage` roles, plus global `NotificationsBellButton` and `read_at`-guarded `_NotificationsSheet` in both `MemberShell` and `OpsShell`).
+- Fixed front-desk override permission check to `checkin.force_override` matching `000100`/`000300` SQL policies.
+- Verified with `dart format` (`153 files`), `flutter analyze` (`0 issues`), `28/28` automated tests (`test/features/wave3_modules_test.dart`), plus release builds: `flutter build web --release` (`build/web/index.html`) and `flutter build apk --release` (`56.3 MB`).
+
 ### Core Engines & Live Operations — Wave 2 (Phase 5)
 - Implemented `facility_access` slice: live rotating QR pass rendering (`qr_flutter` + HMAC-SHA256, `MemberPassView`) with separate Facility vs Class/PT wallet indicators, `FrontDeskCheckInView` supporting QR validation, replay/cooldown/branch denials, manual lookup, mandatory-reason override, and visit checkout.
 - Implemented `booking` slice: chronological `MemberScheduleBrowseView`, `MemberBookingsListView` with cutoff-aware refunds, and `OpsScheduleRosterView` supporting session creation/cancellation, FIFO waitlist auto-promotion, and instructor attendance marking (`_SessionRosterSheet`).
