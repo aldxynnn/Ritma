@@ -1,6 +1,6 @@
 # RITMA — Known Issues & Environment Blockers
 
-**Last Updated:** 2026-11-24
+**Last Updated:** 2026-11-25
 
 ---
 
@@ -14,13 +14,15 @@
    - **Symptom:** Credentials (`SUPABASE_URL` + Publishable Key `sb_publishable_...`) live only in local git-ignored `env/dev.json` (generated via `.\scripts\setup_dev_env.ps1` from `env/dev.example.json`) and are never committed to Git.
    - **Impact:** Fresh clones must populate `env/dev.json` before running `--dart-define-from-file=env/dev.json` against Cloud (`ysgdtyexzmliidpiiarh`) or local Docker (`http://127.0.0.1:54321`).
 
-3. **Automatic Notification Outbox Population Not Yet Wired to RPC Triggers**
-   - **Symptom:** `public.user_notifications` table, RLS policies (`user_notifications_select_own`, `user_notifications_update_own`), column guard trigger (`trg_user_notifications_guard`), and Flutter UI (`NotificationsBellButton`, `_NotificationsSheet`, `markNotificationRead`) are implemented and query real PostgREST cleanly, returning an empty list until notification rows are inserted server-side (e.g., via scheduled workers, Edge Functions, or future RPC hooks).
-   - **Impact:** Functional RLS/SELECT verified live against Cloud (`HTTP 200`); notification badge shows `0` for new accounts unless rows exist in `user_notifications`.
-
-4. **iOS Release Build Requires macOS / Xcode**
+3. **iOS Release Build Requires macOS / Xcode**
    - **Symptom:** Active development host runs Windows 11.
-   - **Impact:** `flutter build web --release` (`build/web/index.html`, `1,544` bytes) and `flutter build apk --release` (`app-release.apk`, `56.3 MB` verified earlier) compiled cleanly on Windows, whereas iOS `.ipa` building/signing must run on macOS. `ios/Runner.xcodeproj/project.pbxproj` is verified with `PRODUCT_BUNDLE_IDENTIFIER = com.ritma.ritma` and `IPHONEOS_DEPLOYMENT_TARGET = 15.0`.
+   - **Impact:** `flutter build web --release --dart-define-from-file=env/dev.json` (`build/web/index.html` `2,236` bytes, `main.dart.js` `3.34 MB`) and `flutter build apk --release --dart-define-from-file=env/dev.json` (`build/app/outputs/flutter-apk/app-release.apk`, `56.55 MB`) compiled cleanly on Windows, whereas iOS `.ipa` building/signing must run on macOS. `ios/Runner.xcodeproj/project.pbxproj` is verified with `PRODUCT_BUNDLE_IDENTIFIER = com.ritma.ritma` and `IPHONEOS_DEPLOYMENT_TARGET = 15.0`.
+
+---
+
+## Resolved Items
+
+- **Automatic Notification Outbox Population (`Resolved via Migration 20261124000700`):** Added `SECURITY DEFINER` triggers `private.notify_on_subscription_created()` and `private.notify_on_booking_change()` in `supabase/migrations/20261124000700_trainer_display_name_and_notification_hooks.sql` so subscription activation, class booking confirmation, waitlist joins, and waitlist promotions populate `public.user_notifications` automatically (verified live in `Notifications` UI during Cloud E2E).
 
 ---
 

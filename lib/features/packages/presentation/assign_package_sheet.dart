@@ -5,8 +5,10 @@ import 'package:uuid/uuid.dart';
 import '../../../core/theme/ritma_spacing.dart';
 import '../../../core/widgets/async_state_view.dart';
 import '../../auth/application/auth_providers.dart';
+import '../../dashboard/application/dashboard_providers.dart';
 import '../../organizations/application/organization_providers.dart';
 import '../../organizations/domain/branch_model.dart';
+import '../../payments/application/payment_providers.dart';
 import '../application/package_providers.dart';
 import '../domain/package_models.dart';
 
@@ -71,6 +73,13 @@ class _AssignPackageSheetState extends ConsumerState<AssignPackageSheet> {
     result.when(
       success: (_) {
         ref.invalidate(memberWalletProvider(widget.memberId));
+        ref.invalidate(orgPaymentsProvider);
+        ref.invalidate(operationalMetricsProvider);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Package provisioned for ${widget.memberName}.'),
+          ),
+        );
         Navigator.of(context).pop(true);
       },
       failure: (failure) {
@@ -126,12 +135,16 @@ class _AssignPackageSheetState extends ConsumerState<AssignPackageSheet> {
                 _selectedPackageId ??= packages.first.id;
                 return DropdownButtonFormField<String>(
                   initialValue: _selectedPackageId,
+                  isExpanded: true,
                   decoration: const InputDecoration(labelText: 'Package'),
                   items: packages
                       .map(
                         (p) => DropdownMenuItem(
                           value: p.id,
-                          child: Text('${p.name} (${p.packageType.label})'),
+                          child: Text(
+                            '${p.name} (${p.packageType.label})',
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       )
                       .toList(),
@@ -153,13 +166,16 @@ class _AssignPackageSheetState extends ConsumerState<AssignPackageSheet> {
                 _selectedBranchId = currentBranch;
                 return DropdownButtonFormField<String>(
                   initialValue: currentBranch,
+                  isExpanded: true,
                   decoration: const InputDecoration(
                     labelText: 'Assigned Branch',
                   ),
                   items: branches
                       .map(
-                        (b) =>
-                            DropdownMenuItem(value: b.id, child: Text(b.name)),
+                        (b) => DropdownMenuItem(
+                          value: b.id,
+                          child: Text(b.name, overflow: TextOverflow.ellipsis),
+                        ),
                       )
                       .toList(),
                   onChanged: isBranchLocked
@@ -171,6 +187,7 @@ class _AssignPackageSheetState extends ConsumerState<AssignPackageSheet> {
             const SizedBox(height: RitmaSpacing.sm),
             DropdownButtonFormField<PaymentMethod>(
               initialValue: _paymentMethod,
+              isExpanded: true,
               decoration: const InputDecoration(labelText: 'Payment Method'),
               items:
                   const [
@@ -179,7 +196,10 @@ class _AssignPackageSheetState extends ConsumerState<AssignPackageSheet> {
                         PaymentMethod.cardTerminal,
                       ]
                       .map(
-                        (m) => DropdownMenuItem(value: m, child: Text(m.label)),
+                        (m) => DropdownMenuItem(
+                          value: m,
+                          child: Text(m.label, overflow: TextOverflow.ellipsis),
+                        ),
                       )
                       .toList(),
               onChanged: (val) {

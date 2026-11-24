@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/router/app_routes.dart';
 import '../../../core/theme/ritma_spacing.dart';
+import '../../../core/theme/theme_mode_provider.dart';
 import '../../../core/widgets/async_state_view.dart';
 import '../../../core/widgets/ritma_section_header.dart';
 import '../../../core/widgets/ritma_status_pill.dart';
@@ -84,6 +85,7 @@ class _WorkspacePickerScreenState extends ConsumerState<WorkspacePickerScreen> {
       appBar: AppBar(
         title: const Text('Select Workspace'),
         actions: [
+          const ThemeModeToggleButton(),
           IconButton(
             tooltip: 'Refresh Workspaces',
             onPressed: () =>

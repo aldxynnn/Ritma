@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/router/app_routes.dart';
 import '../../../core/theme/ritma_spacing.dart';
+import '../../../core/theme/theme_mode_provider.dart';
 import '../../../core/widgets/ritma_section_header.dart';
 import '../../../core/widgets/ritma_status_pill.dart';
 import '../../payments/presentation/payments_ledger_view.dart';
@@ -222,6 +223,44 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                 ),
                               )
                             : const Text('Save Profile'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: RitmaSpacing.md),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(RitmaSpacing.md),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const RitmaSectionHeader(
+                        title: 'Appearance',
+                        subtitle: 'Editorial Kinetic dark cockpit or daylight reception mode',
+                      ),
+                      const SizedBox(height: RitmaSpacing.sm),
+                      SegmentedButton<ThemeMode>(
+                        segments: const <ButtonSegment<ThemeMode>>[
+                          ButtonSegment<ThemeMode>(
+                            value: ThemeMode.dark,
+                            icon: Icon(Icons.dark_mode_outlined),
+                            label: Text('Dark'),
+                          ),
+                          ButtonSegment<ThemeMode>(
+                            value: ThemeMode.light,
+                            icon: Icon(Icons.light_mode_outlined),
+                            label: Text('Light'),
+                          ),
+                        ],
+                        selected: <ThemeMode>{
+                          ref.watch(themeModeProvider) == ThemeMode.light
+                              ? ThemeMode.light
+                              : ThemeMode.dark,
+                        },
+                        onSelectionChanged: (values) => ref
+                            .read(themeModeProvider.notifier)
+                            .setMode(values.first),
                       ),
                     ],
                   ),

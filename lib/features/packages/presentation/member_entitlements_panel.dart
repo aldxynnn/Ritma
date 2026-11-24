@@ -21,6 +21,11 @@ class MemberEntitlementsPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final workspace = ref.watch(activeWorkspaceProvider);
     final walletAsync = ref.watch(memberWalletProvider(memberId));
+    final packages =
+        ref.watch(orgPackagesProvider).asData?.value ?? const <PackageModel>[];
+    final packageNames = <String, String>{
+      for (final p in packages) p.id: p.name,
+    };
     final canAssign = ref.watch(hasPermissionProvider('entitlement.assign'));
     final canAdjust = ref.watch(hasPermissionProvider('credit.adjust'));
 
@@ -86,7 +91,8 @@ class MemberEntitlementsPanel extends ConsumerWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Subscription ${sub.id.substring(0, 8)}',
+                                packageNames[sub.packageId] ??
+                                    'Subscription ${sub.id.substring(0, 8)}',
                                 style: Theme.of(context).textTheme.titleSmall,
                               ),
                               Text(
@@ -156,7 +162,6 @@ class MemberEntitlementsPanel extends ConsumerWidget {
                   ? OutlinedButton.icon(
                       onPressed: () => _showAdjustCreditsDialog(
                         context,
-                        ref,
                         workspace.organizationId,
                       ),
                       icon: const Icon(Icons.tune, size: 16),
@@ -199,95 +204,172 @@ class MemberEntitlementsPanel extends ConsumerWidget {
 
   Future<void> _showAdjustCreditsDialog(
     BuildContext context,
-    WidgetRef ref,
     String orgId,
   ) async {
-    final deltaCtrl = TextEditingController(text: '1');
-    final reasonCtrl = TextEditingController();
-    var creditType = CreditType.classCredit;
-    final key = const Uuid().v4();
-
-    await showDialog<void>(
+    final feedback = await showDialog<String>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setInnerState) => AlertDialog(
-          title: const Text('Adjust Member Credits'),
-          content: Column(
+      builder: (_) => _AdjustCreditsDialog(orgId: orgId, memberId: memberId),
+    );
+    if (feedback != null && context.mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(feedback)));
+    }
+  }
+}
+
+class _AdjustCreditsDialog extends ConsumerStatefulWidget {
+  const _AdjustCreditsDialog({required this.orgId, required this.memberId});
+
+  final String orgId;
+  final String memberId;
+
+  @override
+  ConsumerState<_AdjustCreditsDialog> createState() =>
+      _AdjustCreditsDialogState();
+}
+
+class _AdjustCreditsDialogState extends ConsumerState<_AdjustCreditsDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _deltaCtrl = TextEditingController(text: '1');
+  final _reasonCtrl = TextEditingController();
+  CreditType _creditType = CreditType.classCredit;
+  bool _saving = false;
+  String? _inlineError;
+  final String _idempotencyKey = const Uuid().v4();
+
+  @override
+  void dispose() {
+    _deltaCtrl.dispose();
+    _reasonCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!(_formKey.currentState?.validate() ?? false)) {
+      setState(() => _inlineError = 'Fix highlighted fields before applying.');
+      return;
+    }
+    final repo = ref.read(packageEntitlementRepositoryProvider);
+    final delta = int.tryParse(_deltaCtrl.text.trim()) ?? 0;
+    if (repo == null || delta == 0) {
+      setState(() => _inlineError = 'Repository unavailable.');
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _inlineError = null;
+    });
+    final res = await repo.adjustMemberCredits(
+      orgId: widget.orgId,
+      memberId: widget.memberId,
+      creditType: _creditType,
+      delta: delta,
+      reason: _reasonCtrl.text,
+      idempotencyKey: _idempotencyKey,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() => _saving = false);
+    res.when(
+      success: (_) {
+        ref.invalidate(memberWalletProvider(widget.memberId));
+        Navigator.of(context).pop(
+          'Adjusted ${_creditType.label} by ${delta > 0 ? '+' : ''}$delta.',
+        );
+      },
+      failure: (f) => setState(() => _inlineError = f.message),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return AlertDialog(
+      title: const Text('Adjust Member Credits'),
+      content: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (_inlineError != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(RitmaSpacing.sm),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.error.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(RitmaRadius.md),
+                    border: Border.all(color: theme.colorScheme.error),
+                  ),
+                  child: Text(
+                    _inlineError!,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: RitmaSpacing.sm),
+              ],
               DropdownButtonFormField<CreditType>(
-                initialValue: creditType,
+                initialValue: _creditType,
+                isExpanded: true,
                 decoration: const InputDecoration(labelText: 'Credit Type'),
                 items: CreditType.values
                     .map(
-                      (t) => DropdownMenuItem(value: t, child: Text(t.label)),
+                      (t) => DropdownMenuItem(
+                        value: t,
+                        child: Text(t.label, overflow: TextOverflow.ellipsis),
+                      ),
                     )
                     .toList(),
                 onChanged: (val) {
                   if (val != null) {
-                    setInnerState(() => creditType = val);
+                    setState(() => _creditType = val);
                   }
                 },
               ),
               const SizedBox(height: RitmaSpacing.sm),
-              TextField(
-                controller: deltaCtrl,
+              TextFormField(
+                controller: _deltaCtrl,
                 keyboardType: const TextInputType.numberWithOptions(
                   signed: true,
                 ),
                 decoration: const InputDecoration(
                   labelText: 'Delta (e.g. +2 or -1)',
                 ),
+                validator: (v) {
+                  final n = int.tryParse((v ?? '').trim());
+                  if (n == null || n == 0) {
+                    return 'Enter a non-zero integer.';
+                  }
+                  return null;
+                },
               ),
               const SizedBox(height: RitmaSpacing.sm),
-              TextField(
-                controller: reasonCtrl,
+              TextFormField(
+                controller: _reasonCtrl,
                 decoration: const InputDecoration(
                   labelText: 'Audit Reason (required)',
                 ),
+                validator: (v) => (v == null || v.trim().length < 3)
+                    ? 'Enter an audit reason (min 3 chars).'
+                    : null,
               ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                final repo = ref.read(packageEntitlementRepositoryProvider);
-                final delta = int.tryParse(deltaCtrl.text.trim()) ?? 0;
-                if (repo == null ||
-                    delta == 0 ||
-                    reasonCtrl.text.trim().isEmpty) {
-                  return;
-                }
-                final res = await repo.adjustMemberCredits(
-                  orgId: orgId,
-                  memberId: memberId,
-                  creditType: creditType,
-                  delta: delta,
-                  reason: reasonCtrl.text,
-                  idempotencyKey: key,
-                );
-                if (!dialogContext.mounted) {
-                  return;
-                }
-                res.when(
-                  success: (_) {
-                    ref.invalidate(memberWalletProvider(memberId));
-                    Navigator.of(dialogContext).pop();
-                  },
-                  failure: (f) =>
-                      ScaffoldMessenger.of(context)
-                          .showSnackBar(SnackBar(content: Text(f.message))),
-                );
-              },
-              child: const Text('Apply'),
-            ),
-          ],
         ),
       ),
+      actions: [
+        TextButton(
+          onPressed: _saving ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _saving ? null : _submit,
+          child: Text(_saving ? 'Applying...' : 'Apply'),
+        ),
+      ],
     );
   }
 }

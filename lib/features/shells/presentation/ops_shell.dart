@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../app/router/app_routes.dart';
 import '../../../core/theme/ritma_spacing.dart';
 import '../../../core/theme/ritma_theme.dart';
+import '../../../core/theme/theme_mode_provider.dart';
 import '../../../core/widgets/ritma_responsive_scaffold.dart';
 import '../../../core/widgets/ritma_status_pill.dart';
 import '../../auth/application/auth_providers.dart';
@@ -135,15 +136,22 @@ class OpsShell extends ConsumerWidget {
         appBarTitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(workspace?.organizationName ?? 'RITMA Operations'),
+            Text(
+              workspace?.organizationName ?? 'RITMA Operations',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
             if (workspace != null)
               Text(
                 '${workspace.roleDisplayName} • ${workspace.scopeLabel}',
                 style: Theme.of(context).textTheme.bodySmall,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
           ],
         ),
         appBarActions: [
+          const ThemeModeToggleButton(),
           const NotificationsBellButton(),
           TextButton.icon(
             onPressed: () => context.go(AppRoutes.workspaces),

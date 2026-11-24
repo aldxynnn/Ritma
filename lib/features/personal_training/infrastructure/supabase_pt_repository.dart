@@ -19,7 +19,8 @@ class SupabasePtRepository extends BaseRepository implements PtRepository {
       var builder = _client
           .from('trainer_profiles')
           .select(
-            'id, organization_id, user_id, home_branch_id, bio, specialties, default_credit_cost, is_active',
+            'id, organization_id, user_id, home_branch_id, display_name, bio, '
+            'specialties, default_credit_cost, is_active',
           )
           .eq('organization_id', orgId)
           .eq('is_active', true);
@@ -68,7 +69,9 @@ class SupabasePtRepository extends BaseRepository implements PtRepository {
       var builder = _client
           .from('pt_sessions')
           .select(
-            'id, organization_id, branch_id, trainer_id, member_id, starts_at, ends_at, credit_cost, status, notes',
+            'id, organization_id, branch_id, trainer_id, member_id, '
+            'starts_at, ends_at, credit_cost, status, notes, '
+            'trainer_profiles(display_name), members(full_name)',
           )
           .eq('organization_id', orgId);
       if (branchId != null) {
@@ -78,9 +81,18 @@ class SupabasePtRepository extends BaseRepository implements PtRepository {
         builder = builder.eq('member_id', memberId);
       }
       final rows = await builder.order('starts_at', ascending: true);
-      return rows
-          .map((r) => PtSessionModel.fromJson(Map<String, dynamic>.from(r)))
-          .toList();
+      return rows.map((r) {
+        final map = Map<String, dynamic>.from(r);
+        final trainerRel = map.remove('trainer_profiles');
+        if (trainerRel is Map && trainerRel['display_name'] is String) {
+          map['trainer_display_name'] = trainerRel['display_name'] as String;
+        }
+        final memberRel = map.remove('members');
+        if (memberRel is Map && memberRel['full_name'] is String) {
+          map['member_display_name'] = memberRel['full_name'] as String;
+        }
+        return PtSessionModel.fromJson(map);
+      }).toList();
     }, operation: 'fetchPtSessions');
   }
 

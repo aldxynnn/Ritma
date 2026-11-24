@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/ritma_spacing.dart';
 import '../../../core/widgets/async_state_view.dart';
+import '../../../core/widgets/ritma_page_container.dart';
 import '../../../core/widgets/ritma_section_header.dart';
 import '../../../core/widgets/ritma_status_pill.dart';
 import '../../auth/application/auth_providers.dart';
 import '../../organizations/application/organization_providers.dart';
+import '../../organizations/domain/branch_model.dart';
 import '../../packages/presentation/assign_package_sheet.dart';
 import '../../packages/presentation/member_entitlements_panel.dart';
 import '../application/member_providers.dart';
@@ -28,8 +30,14 @@ class MembersDirectoryView extends ConsumerWidget {
 
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.all(RitmaSpacing.md),
+        RitmaPageContainer(
+          maxWidth: 1200,
+          padding: const EdgeInsets.fromLTRB(
+            RitmaSpacing.md,
+            RitmaSpacing.md,
+            RitmaSpacing.md,
+            RitmaSpacing.sm,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -61,36 +69,38 @@ class MembersDirectoryView extends ConsumerWidget {
                     .setQuery(value),
               ),
               const SizedBox(height: RitmaSpacing.xs),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    FilterChip(
-                      label: const Text('All'),
-                      selected: statusFilter == null,
+              Wrap(
+                spacing: RitmaSpacing.xs,
+                runSpacing: RitmaSpacing.xs,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  FilterChip(
+                    label: const Text('All'),
+                    selected: statusFilter == null,
+                    onSelected: (_) => ref
+                        .read(memberStatusFilterProvider.notifier)
+                        .setStatus(null),
+                  ),
+                  ...[
+                    MemberStatus.active,
+                    MemberStatus.frozen,
+                    MemberStatus.suspended,
+                  ].map(
+                    (st) => FilterChip(
+                      label: Text(st.displayLabel),
+                      selected: statusFilter == st,
                       onSelected: (_) => ref
                           .read(memberStatusFilterProvider.notifier)
-                          .setStatus(null),
+                          .setStatus(statusFilter == st ? null : st),
                     ),
-                    const SizedBox(width: RitmaSpacing.xs),
-                    ...[
-                      MemberStatus.active,
-                      MemberStatus.frozen,
-                      MemberStatus.suspended,
-                    ].map(
-                      (st) => Padding(
-                        padding: const EdgeInsets.only(right: RitmaSpacing.xs),
-                        child: FilterChip(
-                          label: Text(st.displayLabel),
-                          selected: statusFilter == st,
-                          onSelected: (_) => ref
-                              .read(memberStatusFilterProvider.notifier)
-                              .setStatus(statusFilter == st ? null : st),
-                        ),
-                      ),
+                  ),
+                  if (membersAsync.asData?.value case final list?) ...[
+                    RitmaStatusPill(
+                      label: '${list.length} shown',
+                      icon: Icons.groups_outlined,
                     ),
                   ],
-                ),
+                ],
               ),
             ],
           ),
@@ -103,32 +113,40 @@ class MembersDirectoryView extends ConsumerWidget {
             emptyMessage: 'Register a member or clear search filters.',
             onRetry: () => ref.invalidate(membersListProvider),
             data: (members) => ListView.separated(
-              padding: const EdgeInsets.fromLTRB(
-                RitmaSpacing.md,
-                0,
-                RitmaSpacing.md,
-                RitmaSpacing.lg,
-              ),
+              padding: const EdgeInsets.only(bottom: RitmaSpacing.lg),
               itemCount: members.length,
               separatorBuilder: (_, _) =>
                   const SizedBox(height: RitmaSpacing.xs),
               itemBuilder: (context, index) {
                 final m = members[index];
-                return Card(
-                  child: ListTile(
-                    title: Text(m.fullName),
-                    subtitle: Text(
-                      '${m.memberCode}${m.email != null ? ' • ${m.email}' : ''}',
+                return RitmaPageContainer(
+                  maxWidth: 1200,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: RitmaSpacing.md,
+                  ),
+                  child: Card(
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        child: Text(
+                          m.fullName.isNotEmpty
+                              ? m.fullName[0].toUpperCase()
+                              : 'M',
+                        ),
+                      ),
+                      title: Text(m.fullName),
+                      subtitle: Text(
+                        '${m.memberCode}${m.email != null ? ' • ${m.email}' : ''}',
+                      ),
+                      trailing: RitmaStatusPill(
+                        label: m.status.displayLabel,
+                        tone: m.status == MemberStatus.active
+                            ? RitmaPillTone.success
+                            : m.status == MemberStatus.frozen
+                            ? RitmaPillTone.warning
+                            : RitmaPillTone.danger,
+                      ),
+                      onTap: () => _openMemberDetail(context, m),
                     ),
-                    trailing: RitmaStatusPill(
-                      label: m.status.displayLabel,
-                      tone: m.status == MemberStatus.active
-                          ? RitmaPillTone.success
-                          : m.status == MemberStatus.frozen
-                          ? RitmaPillTone.warning
-                          : RitmaPillTone.danger,
-                    ),
-                    onTap: () => _openMemberDetail(context, m),
                   ),
                 );
               },
@@ -168,62 +186,181 @@ class MembersDirectoryView extends ConsumerWidget {
       return;
     }
 
-    final nameCtrl = TextEditingController();
-    final codeCtrl = TextEditingController();
-    final emailCtrl = TextEditingController();
-    final phoneCtrl = TextEditingController();
-    var selectedBranchId = defaultBranchId;
-
-    await showDialog<void>(
+    final createdName = await showDialog<String>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setInnerState) => AlertDialog(
-          title: const Text('Register Member'),
-          content: SingleChildScrollView(
+      builder: (_) => _RegisterMemberDialog(
+        orgId: orgId,
+        scopedBranchId: scopedBranchId,
+        branches: branches,
+        initialBranchId: defaultBranchId,
+      ),
+    );
+    if (createdName != null && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Member "$createdName" registered.')),
+      );
+    }
+  }
+}
+
+class _RegisterMemberDialog extends ConsumerStatefulWidget {
+  const _RegisterMemberDialog({
+    required this.orgId,
+    required this.scopedBranchId,
+    required this.branches,
+    required this.initialBranchId,
+  });
+
+  final String orgId;
+  final String? scopedBranchId;
+  final List<BranchModel> branches;
+  final String initialBranchId;
+
+  @override
+  ConsumerState<_RegisterMemberDialog> createState() =>
+      _RegisterMemberDialogState();
+}
+
+class _RegisterMemberDialogState extends ConsumerState<_RegisterMemberDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameCtrl = TextEditingController();
+  final _codeCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
+  late String _selectedBranchId = widget.initialBranchId;
+  bool _saving = false;
+  String? _inlineError;
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _codeCtrl.dispose();
+    _emailCtrl.dispose();
+    _phoneCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!(_formKey.currentState?.validate() ?? false)) {
+      setState(() => _inlineError = 'Please fix the highlighted fields.');
+      return;
+    }
+    final repo = ref.read(memberRepositoryProvider);
+    if (repo == null) {
+      setState(() => _inlineError = 'Member service unavailable.');
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _inlineError = null;
+    });
+    final memberName = _nameCtrl.text.trim();
+    final res = await repo.registerMember(
+      orgId: widget.orgId,
+      homeBranchId: _selectedBranchId,
+      memberCode: _codeCtrl.text,
+      fullName: memberName,
+      email: _emailCtrl.text,
+      phone: _phoneCtrl.text,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() => _saving = false);
+    res.when(
+      success: (_) {
+        ref.invalidate(membersListProvider);
+        Navigator.of(context).pop(memberName);
+      },
+      failure: (f) => setState(() => _inlineError = f.message),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return AlertDialog(
+      title: const Text('Register Member'),
+      content: SizedBox(
+        width: 420,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                TextField(
-                  controller: nameCtrl,
+                if (_inlineError != null) ...[
+                  Container(
+                    padding: const EdgeInsets.all(RitmaSpacing.sm),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.error.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(RitmaRadius.md),
+                      border: Border.all(color: theme.colorScheme.error),
+                    ),
+                    child: Text(
+                      _inlineError!,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.error,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: RitmaSpacing.sm),
+                ],
+                TextFormField(
+                  controller: _nameCtrl,
                   decoration: const InputDecoration(labelText: 'Full Name'),
+                  validator: (v) => (v == null || v.trim().length < 2)
+                      ? 'Enter at least 2 characters.'
+                      : null,
                 ),
                 const SizedBox(height: RitmaSpacing.sm),
-                TextField(
-                  controller: codeCtrl,
+                TextFormField(
+                  controller: _codeCtrl,
                   decoration: const InputDecoration(
                     labelText: 'Member Code (e.g. RTM-2001)',
                   ),
+                  validator: (v) => (v == null || v.trim().length < 2)
+                      ? 'Enter a member code (min 2 chars).'
+                      : null,
                 ),
                 const SizedBox(height: RitmaSpacing.sm),
-                if (scopedBranchId == null && branches.isNotEmpty) ...[
+                if (widget.scopedBranchId == null &&
+                    widget.branches.isNotEmpty) ...[
                   DropdownButtonFormField<String>(
-                    initialValue: selectedBranchId,
+                    initialValue: _selectedBranchId,
+                    isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Home Branch'),
-                    items: branches
+                    items: widget.branches
                         .map(
                           (b) => DropdownMenuItem(
                             value: b.id,
-                            child: Text(b.name),
+                            child: Text(
+                              b.name,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         )
                         .toList(),
                     onChanged: (val) {
                       if (val != null) {
-                        setInnerState(() => selectedBranchId = val);
+                        setState(() => _selectedBranchId = val);
                       }
                     },
                   ),
                   const SizedBox(height: RitmaSpacing.sm),
                 ],
-                TextField(
-                  controller: emailCtrl,
+                TextFormField(
+                  controller: _emailCtrl,
+                  keyboardType: TextInputType.emailAddress,
                   decoration: const InputDecoration(
                     labelText: 'Email (optional)',
                   ),
                 ),
                 const SizedBox(height: RitmaSpacing.sm),
-                TextField(
-                  controller: phoneCtrl,
+                TextFormField(
+                  controller: _phoneCtrl,
+                  keyboardType: TextInputType.phone,
                   decoration: const InputDecoration(
                     labelText: 'Phone (optional)',
                   ),
@@ -231,45 +368,18 @@ class MembersDirectoryView extends ConsumerWidget {
               ],
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                final repo = ref.read(memberRepositoryProvider);
-                if (repo == null ||
-                    nameCtrl.text.trim().length < 2 ||
-                    codeCtrl.text.trim().isEmpty) {
-                  return;
-                }
-                final res = await repo.registerMember(
-                  orgId: orgId,
-                  homeBranchId: selectedBranchId,
-                  memberCode: codeCtrl.text,
-                  fullName: nameCtrl.text,
-                  email: emailCtrl.text,
-                  phone: phoneCtrl.text,
-                );
-                if (!dialogContext.mounted) {
-                  return;
-                }
-                res.when(
-                  success: (_) {
-                    ref.invalidate(membersListProvider);
-                    Navigator.of(dialogContext).pop();
-                  },
-                  failure: (f) =>
-                      ScaffoldMessenger.of(context)
-                          .showSnackBar(SnackBar(content: Text(f.message))),
-                );
-              },
-              child: const Text('Register'),
-            ),
-          ],
         ),
       ),
+      actions: [
+        TextButton(
+          onPressed: _saving ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _saving ? null : _submit,
+          child: Text(_saving ? 'Registering...' : 'Register'),
+        ),
+      ],
     );
   }
 }

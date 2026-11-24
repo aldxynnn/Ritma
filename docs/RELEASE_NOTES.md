@@ -1,8 +1,19 @@
 # RITMA — Release Notes
 
-## Unreleased (Cycle 1 — In Progress)
+## Unreleased (Demo-Ready Release Overhaul)
 
-### Cloud Web Auth Fix, Least-Privilege Grants & Live Cloud E2E Verification
+### Editorial Kinetic UI Overhaul, Cloud Showcase (`RITMA Atelier & Athletic`), Web & Android Releases
+- Added migration `supabase/migrations/20261124000700_trainer_display_name_and_notification_hooks.sql` introducing non-PII `trainer_profiles.display_name` plus `SECURITY DEFINER` triggers `private.notify_on_subscription_created()` and `private.notify_on_booking_change()` for automatic member notifications; verified locally (`npx supabase db reset` + `4/4` Postgres 17 SQL tests) and pushed to Cloud (`ysgdtyexzmliidpiiarh`).
+- Resolved raw UUID labels across Cloud views via embedded PostgREST joins (`members(full_name)`, `trainer_profiles(display_name)`) in `supabase_facility_access_repository.dart`, `supabase_payment_repository.dart`, and `supabase_pt_repository.dart`, and real package names in `MemberEntitlementsPanel`.
+- Implemented persistent Dark/Light theme switching (`ThemeModeNotifier`, Dark default, header `ThemeModeToggleButton`, Profile appearance card), responsive `RitmaPageContainer` / `RitmaMetricTile` / `RitmaResponsiveScaffold` (compact icon rail below `960dp`), Editorial Digital Pass Card, split Sign-In showcase hero (`!env.isProduction`-guarded), non-overflowing Front-Desk lookup & visit rows, and `StatefulWidget` dialog lifecycle refactoring with inline validation and SnackBar feedback across all CRUD forms.
+- Fixed missing `<uses-permission android:name="android.permission.INTERNET"/>` in `android/app/src/main/AndroidManifest.xml` (required for release APK network requests) and branded `web/index.html` & `web/manifest.json`.
+- Created idempotent additive Cloud seeder [`scripts/seed_cloud_demo.mjs`](../scripts/seed_cloud_demo.mjs) populating `RITMA Atelier & Athletic` (`SCBD Flagship Gym` & `Senopati Boutique Studio`) and authored [`docs/DEMO_GUIDE.md`](./DEMO_GUIDE.md).
+- Verified cleanly across `dart format` (`158` files), `flutter analyze` (`0` issues), `flutter test` (`42` passed, `1` opt-in offline integration skipped), live Cloud E2E + narrow Check-In re-verification (`0` console errors, `0` HTTP `>= 400`), `flutter build web --release --dart-define-from-file=env/dev.json` (`build/web`), and `flutter build apk --release --dart-define-from-file=env/dev.json` (`build/app/outputs/flutter-apk/app-release.apk`, `56.55 MB`).
+
+### Schedule New Session Publish Fix (`8ca04c9`)
+- Resolved silent Publish Session no-op by auto-provisioning/resolving required room & class type prerequisites and surfacing inline validation/error feedback (`publish_session_dialog_test.dart`).
+
+### Cloud Web Auth Fix, Least-Privilege Grants & Live Cloud E2E Verification (`1cfd6c8`)
 - Added forward-only migration `supabase/migrations/20261124000600_grant_authenticated_table_privileges.sql` granting explicit least-privilege `SELECT` / `INSERT` / `UPDATE` / `DELETE` table rights to `authenticated` (with zero `anon` privileges) across all 38 `public.*` tables so Cloud PostgREST matches local Docker behavior (`HTTP 403` resolved on `user_profiles` and `public.*` tables); verified locally (`npx supabase db reset` + `4/4` SQL tests) and pushed to Cloud (`ysgdtyexzmliidpiiarh`).
 - Removed mismatched `runZonedGuarded` wrapper around `runApp(...)` in `lib/app/bootstrap.dart` to eliminate Flutter Web `Zone mismatch` initialization assertions.
 - Fixed `AuthController` (`auth_providers.dart`) concurrent session-load deduplication (`_pendingLoad`), error propagation (`_loadAuthenticatedSession` returns `Result<void>`), unauthenticated state ordering on sign-out, `SupabaseAuthRepository.signInWithEmail` non-null session guard, and `ErrorMapper` (`email not confirmed`, `invalid login credentials`, and `permission denied` -> `ForbiddenFailure`).

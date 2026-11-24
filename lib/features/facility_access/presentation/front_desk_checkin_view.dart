@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import '../../../core/theme/ritma_spacing.dart';
 import '../../../core/theme/ritma_status_colors.dart';
 import '../../../core/widgets/async_state_view.dart';
+import '../../../core/widgets/ritma_page_container.dart';
 import '../../../core/widgets/ritma_section_header.dart';
 import '../../../core/widgets/ritma_status_pill.dart';
 import '../../auth/application/auth_providers.dart';
@@ -160,48 +161,11 @@ class _FrontDeskCheckInViewState extends ConsumerState<FrontDeskCheckInView> {
     );
   }
 
-  Future<String?> _promptOverrideReason() async {
-    final controller = TextEditingController();
-    final formKey = GlobalKey<FormState>();
-    final confirmed = await showDialog<String>(
+  Future<String?> _promptOverrideReason() {
+    return showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Manager Override Check-In'),
-        content: Form(
-          key: formKey,
-          child: TextFormField(
-            controller: controller,
-            decoration: const InputDecoration(
-              labelText: 'Audit reason (required)',
-              hintText: 'e.g. Member pass renewal pending reception payment',
-            ),
-            maxLines: 2,
-            validator: (value) {
-              if (value == null || value.trim().length < 5) {
-                return 'Provide at least 5 characters for audit trail.';
-              }
-              return null;
-            },
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (formKey.currentState?.validate() ?? false) {
-                Navigator.of(ctx).pop(controller.text.trim());
-              }
-            },
-            child: const Text('Confirm Override'),
-          ),
-        ],
-      ),
+      builder: (_) => const _OverrideReasonDialog(),
     );
-    controller.dispose();
-    return confirmed;
   }
 
   Future<void> _checkOut({
@@ -241,234 +205,413 @@ class _FrontDeskCheckInViewState extends ConsumerState<FrontDeskCheckInView> {
     final visitsAsync = ref.watch(branchVisitsProvider);
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(RitmaSpacing.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const RitmaSectionHeader(
-            title: 'Front-Desk Facility Check-In',
-            subtitle: 'Validate rotating member QR tokens, enforce entitlements, and monitor occupancy',
-          ),
-          const SizedBox(height: RitmaSpacing.md),
-          if (workspace.branchId == null && branches.isNotEmpty) ...[
-            DropdownButtonFormField<String>(
-              initialValue: activeBranchId,
-              decoration: const InputDecoration(
-                labelText: 'Check-In Branch',
-                prefixIcon: Icon(Icons.storefront_outlined),
-              ),
-              items: branches
-                  .map(
-                    (b) => DropdownMenuItem<String>(
-                      value: b.id,
-                      child: Text(b.name),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (val) => setState(() => _selectedBranchId = val),
+      child: RitmaPageContainer(
+        maxWidth: 1200,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const RitmaSectionHeader(
+              title: 'Front-Desk Facility Check-In',
+              subtitle: 'Validate rotating member QR tokens, enforce entitlements, and monitor occupancy',
             ),
             const SizedBox(height: RitmaSpacing.md),
-          ],
-          if (_lastOutcome != null) ...[
-            _OutcomeBanner(outcome: _lastOutcome!),
-            const SizedBox(height: RitmaSpacing.md),
-          ],
-          if (canPerform && activeBranchId != null) ...[
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(RitmaSpacing.md),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      'QR Pass Validation',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: RitmaSpacing.xs),
-                    TextField(
-                      controller: _qrController,
-                      decoration: const InputDecoration(
-                        labelText: 'Member QR Token',
-                        hintText: 'Paste or scan token payload...',
-                        prefixIcon: Icon(Icons.qr_code_scanner),
-                      ),
-                      onSubmitted: (_) => _submitQrCheckIn(
-                        orgId: workspace.organizationId,
-                        branchId: activeBranchId,
-                      ),
-                    ),
-                    const SizedBox(height: RitmaSpacing.sm),
-                    FilledButton.icon(
-                      onPressed: _submitting
-                          ? null
-                          : () => _submitQrCheckIn(
-                              orgId: workspace.organizationId,
-                              branchId: activeBranchId,
-                            ),
-                      icon: const Icon(Icons.verified_outlined, size: 18),
-                      label: const Text('Validate & Check In'),
-                    ),
-                  ],
+            if (workspace.branchId == null && branches.isNotEmpty) ...[
+              DropdownButtonFormField<String>(
+                key: ValueKey('checkin-branch-${activeBranchId ?? ''}'),
+                initialValue: activeBranchId,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Check-In Branch',
+                  prefixIcon: Icon(Icons.storefront_outlined),
                 ),
-              ),
-            ),
-            const SizedBox(height: RitmaSpacing.md),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(RitmaSpacing.md),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      'Manual Member Lookup',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: RitmaSpacing.xs),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _lookupController,
-                            decoration: const InputDecoration(
-                              labelText: 'Name or Member Code',
-                              prefixIcon: Icon(Icons.person_search_outlined),
-                            ),
-                            onSubmitted: (_) => _searchMembers(
-                              orgId: workspace.organizationId,
-                              branchId: activeBranchId,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: RitmaSpacing.xs),
-                        FilledButton(
-                          onPressed: _submitting
-                              ? null
-                              : () => _searchMembers(
-                                  orgId: workspace.organizationId,
-                                  branchId: activeBranchId,
-                                ),
-                          child: const Text('Search'),
-                        ),
-                      ],
-                    ),
-                    if (_lookupError != null) ...[
-                      const SizedBox(height: RitmaSpacing.xs),
-                      Text(
-                        _lookupError!,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.error,
-                        ),
-                      ),
-                    ],
-                    if (_lookupResults.isNotEmpty) ...[
-                      const SizedBox(height: RitmaSpacing.sm),
-                      ..._lookupResults.map(
-                        (member) => ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(member.fullName),
-                          subtitle: Text(
-                            '${member.memberCode} • ${member.status.toUpperCase()}',
-                          ),
-                          trailing: Wrap(
-                            spacing: RitmaSpacing.xs,
-                            children: [
-                              OutlinedButton(
-                                onPressed: _submitting
-                                    ? null
-                                    : () => _manualCheckIn(
-                                        orgId: workspace.organizationId,
-                                        branchId: activeBranchId,
-                                        memberId: member.id,
-                                      ),
-                                child: const Text('Check In'),
-                              ),
-                              if (canOverride)
-                                FilledButton.tonal(
-                                  onPressed: _submitting
-                                      ? null
-                                      : () => _manualCheckIn(
-                                          orgId: workspace.organizationId,
-                                          branchId: activeBranchId,
-                                          memberId: member.id,
-                                          forceOverride: true,
-                                        ),
-                                  child: const Text('Override'),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: RitmaSpacing.lg),
-          ],
-          RitmaSectionHeader(
-            title: 'Recent Branch Visits',
-            subtitle: 'Live gate and reception check-in feed',
-            trailing: IconButton(
-              tooltip: 'Refresh visits',
-              onPressed: () => ref.invalidate(branchVisitsProvider),
-              icon: const Icon(Icons.refresh),
-            ),
-          ),
-          const SizedBox(height: RitmaSpacing.sm),
-          AsyncStateView<List<FacilityVisitModel>>(
-            value: visitsAsync,
-            isEmpty: (visits) => visits.isEmpty,
-            emptyTitle: 'No visits recorded yet',
-            emptyMessage: 'Validated check-ins appear here in real time.',
-            onRetry: () => ref.invalidate(branchVisitsProvider),
-            data: (visits) {
-              final fmt = DateFormat.jm();
-              return Column(
-                children: visits
+                items: branches
                     .map(
-                      (visit) => Padding(
-                        padding: const EdgeInsets.only(bottom: RitmaSpacing.xs),
-                        child: Card(
-                          child: ListTile(
-                            leading: Icon(
-                              visit.checkInMethod == 'qr'
-                                  ? Icons.qr_code_2
-                                  : Icons.badge_outlined,
-                            ),
-                            title: Text(
-                              visit.memberName ??
-                                  'Member ${visit.memberId.substring(0, 8)}',
-                            ),
-                            subtitle: Text(
-                              'In ${fmt.format(visit.checkedInAt.toLocal())}'
-                              '${visit.checkedOutAt != null ? ' • Out ${fmt.format(visit.checkedOutAt!.toLocal())}' : ' • Active inside'}'
-                              '${visit.overrideReason != null ? '\nOverride: ${visit.overrideReason}' : ''}',
-                            ),
-                            trailing: visit.checkedOutAt == null && canPerform
-                                ? OutlinedButton(
-                                    onPressed: () => _checkOut(
-                                      orgId: workspace.organizationId,
-                                      visitId: visit.id,
-                                    ),
-                                    child: const Text('Check Out'),
-                                  )
-                                : RitmaStatusPill(
-                                    label: visit.checkedOutAt == null
-                                        ? 'IN FACILITY'
-                                        : 'CHECKED OUT',
-                                    tone: visit.checkedOutAt == null
-                                        ? RitmaPillTone.success
-                                        : RitmaPillTone.neutral,
-                                  ),
-                          ),
-                        ),
+                      (b) => DropdownMenuItem<String>(
+                        value: b.id,
+                        child: Text(b.name, overflow: TextOverflow.ellipsis),
                       ),
                     )
                     .toList(),
-              );
-            },
-          ),
-        ],
+                onChanged: (val) => setState(() => _selectedBranchId = val),
+              ),
+              const SizedBox(height: RitmaSpacing.md),
+            ],
+            if (_lastOutcome != null) ...[
+              _OutcomeBanner(outcome: _lastOutcome!),
+              const SizedBox(height: RitmaSpacing.md),
+            ],
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final twoColumn =
+                    constraints.maxWidth >= 900 &&
+                    canPerform &&
+                    activeBranchId != null;
+
+                final controlsPane = (canPerform && activeBranchId != null)
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(RitmaSpacing.md),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Text(
+                                    'QR Pass Validation',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium,
+                                  ),
+                                  const SizedBox(height: RitmaSpacing.xs),
+                                  TextField(
+                                    controller: _qrController,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Member QR Token',
+                                      hintText:
+                                          'Paste or scan token payload...',
+                                      prefixIcon: Icon(Icons.qr_code_scanner),
+                                    ),
+                                    onSubmitted: (_) => _submitQrCheckIn(
+                                      orgId: workspace.organizationId,
+                                      branchId: activeBranchId,
+                                    ),
+                                  ),
+                                  const SizedBox(height: RitmaSpacing.sm),
+                                  FilledButton.icon(
+                                    onPressed: _submitting
+                                        ? null
+                                        : () => _submitQrCheckIn(
+                                            orgId: workspace.organizationId,
+                                            branchId: activeBranchId,
+                                          ),
+                                    icon: const Icon(
+                                      Icons.verified_outlined,
+                                      size: 18,
+                                    ),
+                                    label: const Text('Validate & Check In'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: RitmaSpacing.md),
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(RitmaSpacing.md),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Text(
+                                    'Manual Member Lookup',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium,
+                                  ),
+                                  const SizedBox(height: RitmaSpacing.xs),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextField(
+                                          controller: _lookupController,
+                                          decoration: const InputDecoration(
+                                            labelText: 'Name or Member Code',
+                                            prefixIcon: Icon(
+                                              Icons.person_search_outlined,
+                                            ),
+                                          ),
+                                          onSubmitted: (_) => _searchMembers(
+                                            orgId: workspace.organizationId,
+                                            branchId: activeBranchId,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: RitmaSpacing.xs),
+                                      FilledButton(
+                                        onPressed: _submitting
+                                            ? null
+                                            : () => _searchMembers(
+                                                orgId: workspace.organizationId,
+                                                branchId: activeBranchId,
+                                              ),
+                                        child: const Text('Search'),
+                                      ),
+                                    ],
+                                  ),
+                                  if (_lookupError != null) ...[
+                                    const SizedBox(height: RitmaSpacing.xs),
+                                    Text(
+                                      _lookupError!,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .error,
+                                          ),
+                                    ),
+                                  ],
+                                  if (_lookupResults.isNotEmpty) ...[
+                                    const SizedBox(height: RitmaSpacing.sm),
+                                    ..._lookupResults.map(
+                                      (member) => Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.stretch,
+                                        children: [
+                                          const Divider(
+                                            height: RitmaSpacing.md,
+                                          ),
+                                          Text(
+                                            member.fullName,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .titleSmall,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          const SizedBox(
+                                            height: RitmaSpacing.xxs,
+                                          ),
+                                          Text(
+                                            '${member.memberCode} • ${member.status.toUpperCase()}',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodySmall,
+                                          ),
+                                          const SizedBox(
+                                            height: RitmaSpacing.xs,
+                                          ),
+                                          Wrap(
+                                            spacing: RitmaSpacing.xs,
+                                            runSpacing: RitmaSpacing.xs,
+                                            children: [
+                                              OutlinedButton(
+                                                onPressed: _submitting
+                                                    ? null
+                                                    : () => _manualCheckIn(
+                                                        orgId: workspace
+                                                            .organizationId,
+                                                        branchId:
+                                                            activeBranchId,
+                                                        memberId: member.id,
+                                                      ),
+                                                style: OutlinedButton.styleFrom(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal:
+                                                            RitmaSpacing.sm,
+                                                      ),
+                                                  minimumSize: const Size(
+                                                    0,
+                                                    40,
+                                                  ),
+                                                ),
+                                                child: const Text('Check In'),
+                                              ),
+                                              if (canOverride)
+                                                FilledButton.tonal(
+                                                  onPressed: _submitting
+                                                      ? null
+                                                      : () => _manualCheckIn(
+                                                          orgId: workspace
+                                                              .organizationId,
+                                                          branchId:
+                                                              activeBranchId,
+                                                          memberId: member.id,
+                                                          forceOverride: true,
+                                                        ),
+                                                  style: FilledButton.styleFrom(
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal:
+                                                              RitmaSpacing.sm,
+                                                        ),
+                                                    minimumSize: const Size(
+                                                      0,
+                                                      40,
+                                                    ),
+                                                  ),
+                                                  child: const Text('Override'),
+                                                ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    : const SizedBox.shrink();
+
+                final visitsPane = Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    RitmaSectionHeader(
+                      title: 'Recent Branch Visits',
+                      subtitle: 'Live gate and reception check-in feed',
+                      trailing: IconButton(
+                        tooltip: 'Refresh visits',
+                        onPressed: () => ref.invalidate(branchVisitsProvider),
+                        icon: const Icon(Icons.refresh),
+                      ),
+                    ),
+                    const SizedBox(height: RitmaSpacing.sm),
+                    AsyncStateView<List<FacilityVisitModel>>(
+                      value: visitsAsync,
+                      isEmpty: (visits) => visits.isEmpty,
+                      emptyTitle: 'No visits recorded yet',
+                      emptyMessage:
+                          'Validated check-ins appear here in real time.',
+                      onRetry: () => ref.invalidate(branchVisitsProvider),
+                      data: (visits) {
+                        final fmt = DateFormat.jm();
+                        final activeCount = visits
+                            .where((v) => v.checkedOutAt == null)
+                            .length;
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Wrap(
+                              spacing: RitmaSpacing.xs,
+                              runSpacing: RitmaSpacing.xs,
+                              children: [
+                                RitmaStatusPill(
+                                  label: '$activeCount Active on Floor',
+                                  icon: Icons.sensors,
+                                  tone: activeCount > 0
+                                      ? RitmaPillTone.lime
+                                      : RitmaPillTone.neutral,
+                                ),
+                                RitmaStatusPill(
+                                  label: '${visits.length} Recent Visits',
+                                  icon: Icons.history,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: RitmaSpacing.sm),
+                            ...visits.map(
+                              (visit) => Padding(
+                                padding: const EdgeInsets.only(
+                                  bottom: RitmaSpacing.xs,
+                                ),
+                                child: Card(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(
+                                      RitmaSpacing.md,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          visit.checkInMethod == 'qr'
+                                              ? Icons.qr_code_2
+                                              : Icons.badge_outlined,
+                                        ),
+                                        const SizedBox(width: RitmaSpacing.sm),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                (visit.memberName != null &&
+                                                        visit.memberName!
+                                                            .trim()
+                                                            .isNotEmpty)
+                                                    ? visit.memberName!
+                                                    : 'Member ${visit.memberId.substring(0, 8)}',
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .titleSmall,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                              const SizedBox(
+                                                height: RitmaSpacing.xxs,
+                                              ),
+                                              Text(
+                                                'In ${fmt.format(visit.checkedInAt.toLocal())}'
+                                                '${visit.checkedOutAt != null ? ' • Out ${fmt.format(visit.checkedOutAt!.toLocal())}' : ' • Active inside'}'
+                                                '${visit.overrideReason != null ? '\nOverride: ${visit.overrideReason}' : ''}',
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .bodySmall,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: RitmaSpacing.sm),
+                                        visit.checkedOutAt == null && canPerform
+                                            ? OutlinedButton(
+                                                onPressed: () => _checkOut(
+                                                  orgId:
+                                                      workspace.organizationId,
+                                                  visitId: visit.id,
+                                                ),
+                                                style: OutlinedButton.styleFrom(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal:
+                                                            RitmaSpacing.sm,
+                                                      ),
+                                                  minimumSize: const Size(
+                                                    0,
+                                                    40,
+                                                  ),
+                                                ),
+                                                child: const Text('Check Out'),
+                                              )
+                                            : RitmaStatusPill(
+                                                label:
+                                                    visit.checkedOutAt == null
+                                                    ? 'IN FACILITY'
+                                                    : 'CHECKED OUT',
+                                                tone: visit.checkedOutAt == null
+                                                    ? RitmaPillTone.success
+                                                    : RitmaPillTone.neutral,
+                                              ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ],
+                );
+
+                if (twoColumn) {
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(flex: 5, child: controlsPane),
+                      const SizedBox(width: RitmaSpacing.md),
+                      Expanded(flex: 6, child: visitsPane),
+                    ],
+                  );
+                }
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (canPerform && activeBranchId != null) ...[
+                      controlsPane,
+                      const SizedBox(height: RitmaSpacing.lg),
+                    ],
+                    visitsPane,
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -524,6 +667,62 @@ class _OutcomeBanner extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _OverrideReasonDialog extends StatefulWidget {
+  const _OverrideReasonDialog();
+
+  @override
+  State<_OverrideReasonDialog> createState() => _OverrideReasonDialogState();
+}
+
+class _OverrideReasonDialogState extends State<_OverrideReasonDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Manager Override Check-In'),
+      content: Form(
+        key: _formKey,
+        child: TextFormField(
+          controller: _controller,
+          decoration: const InputDecoration(
+            labelText: 'Audit reason (required)',
+            hintText: 'e.g. Member pass renewal pending reception payment',
+          ),
+          maxLines: 2,
+          validator: (value) {
+            if (value == null || value.trim().length < 5) {
+              return 'Provide at least 5 characters for audit trail.';
+            }
+            return null;
+          },
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            if (_formKey.currentState?.validate() ?? false) {
+              Navigator.of(context).pop(_controller.text.trim());
+            }
+          },
+          child: const Text('Confirm Override'),
+        ),
+      ],
     );
   }
 }

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/theme/ritma_spacing.dart';
 import '../../../core/theme/ritma_status_colors.dart';
 import '../../../core/widgets/async_state_view.dart';
+import '../../../core/widgets/ritma_page_container.dart';
 import '../../../core/widgets/ritma_section_header.dart';
 import '../../../core/widgets/ritma_status_pill.dart';
 import '../../auth/application/auth_providers.dart';
@@ -30,151 +31,203 @@ class OpsScheduleRosterView extends ConsumerWidget {
     final sessionsAsync = ref.watch(classSessionsProvider);
     final branches =
         ref.watch(orgBranchesProvider).asData?.value ?? const <BranchModel>[];
+    final rooms =
+        ref.watch(orgRoomsProvider).asData?.value ?? const <RoomModel>[];
     final canManage = ref.watch(hasPermissionProvider('schedule.manage'));
     final branchNames = <String, String>{
       for (final b in branches) b.id: b.name,
     };
+    final roomNames = <String, String>{for (final r in rooms) r.id: r.name};
 
     return RefreshIndicator(
       onRefresh: () async => ref.invalidate(classSessionsProvider),
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(RitmaSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            RitmaSectionHeader(
-              title: 'Schedules & Live Roster',
-              subtitle: 'Publish classes, monitor waitlists, and mark instructor attendance',
-              trailing: canManage
-                  ? FilledButton.icon(
-                      onPressed: () async {
-                        final created = await showDialog<ClassSessionModel>(
-                          context: context,
-                          builder: (_) => const _CreateClassSessionDialog(),
-                        );
-                        if (created != null) {
-                          ref.invalidate(classSessionsProvider);
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  'Session "${created.title}" published.',
+        child: RitmaPageContainer(
+          maxWidth: 1200,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              RitmaSectionHeader(
+                title: 'Schedules & Live Roster',
+                subtitle: 'Publish classes, monitor waitlists, and mark instructor attendance',
+                trailing: canManage
+                    ? FilledButton.icon(
+                        onPressed: () async {
+                          final created = await showDialog<ClassSessionModel>(
+                            context: context,
+                            builder: (_) => const _CreateClassSessionDialog(),
+                          );
+                          if (created != null) {
+                            ref.invalidate(classSessionsProvider);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Session "${created.title}" published.',
+                                  ),
+                                ),
+                              );
+                            }
+                          }
+                        },
+                        icon: const Icon(Icons.add, size: 18),
+                        label: const Text('New Session'),
+                      )
+                    : IconButton(
+                        tooltip: 'Refresh sessions',
+                        onPressed: () => ref.invalidate(classSessionsProvider),
+                        icon: const Icon(Icons.refresh),
+                      ),
+              ),
+              const SizedBox(height: RitmaSpacing.md),
+              AsyncStateView<List<ClassSessionModel>>(
+                value: sessionsAsync,
+                isEmpty: (list) => list.isEmpty,
+                emptyTitle: 'No sessions scheduled',
+                emptyMessage:
+                    'Tap New Session to publish a studio or gym class.',
+                onRetry: () => ref.invalidate(classSessionsProvider),
+                data: (sessions) {
+                  final timeFmt = DateFormat.MMMEd().add_jm();
+                  return LayoutBuilder(
+                    builder: (context, constraints) {
+                      final cols = constraints.maxWidth >= 820 ? 2 : 1;
+                      const gap = RitmaSpacing.sm;
+                      final cardWidth =
+                          (constraints.maxWidth - (cols - 1) * gap) / cols;
+
+                      return Wrap(
+                        spacing: gap,
+                        runSpacing: gap,
+                        children: sessions.map((session) {
+                          final cancelled =
+                              session.status == SessionStatus.cancelled;
+                          final ratio = session.capacity > 0
+                              ? (session.confirmedCount / session.capacity)
+                                    .clamp(0.0, 1.0)
+                                    .toDouble()
+                              : 0.0;
+                          final roomLabel = roomNames[session.roomId];
+                          return SizedBox(
+                            width: cardWidth,
+                            child: Card(
+                              child: Padding(
+                                padding: const EdgeInsets.all(RitmaSpacing.md),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    Wrap(
+                                      spacing: RitmaSpacing.xs,
+                                      runSpacing: RitmaSpacing.xs,
+                                      children: [
+                                        RitmaStatusPill(
+                                          label:
+                                              branchNames[session.branchId] ??
+                                              'Branch',
+                                          icon: Icons.storefront_outlined,
+                                        ),
+                                        RitmaStatusPill(
+                                          label: cancelled
+                                              ? 'CANCELLED'
+                                              : '${session.confirmedCount}/${session.capacity} booked',
+                                          tone: cancelled
+                                              ? RitmaPillTone.danger
+                                              : session.isFull
+                                              ? RitmaPillTone.warning
+                                              : RitmaPillTone.success,
+                                        ),
+                                        RitmaStatusPill(
+                                          label: '${session.creditCost} credit',
+                                          tone: RitmaPillTone.lime,
+                                        ),
+                                        if (session.waitlistEnabled &&
+                                            !cancelled)
+                                          const RitmaStatusPill(
+                                            label: 'Waitlist ON',
+                                            icon: Icons.queue_outlined,
+                                          ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: RitmaSpacing.sm),
+                                    Text(
+                                      session.title,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium,
+                                    ),
+                                    const SizedBox(height: RitmaSpacing.xxs),
+                                    Text(
+                                      '${timeFmt.format(session.startsAt.toLocal())}'
+                                      '${session.instructorDisplayName.isNotEmpty ? ' • ${session.instructorDisplayName}' : ''}'
+                                      '${roomLabel != null ? ' • $roomLabel' : ''}',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall,
+                                    ),
+                                    if (!cancelled) ...[
+                                      const SizedBox(height: RitmaSpacing.xs),
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(
+                                          RitmaRadius.sm,
+                                        ),
+                                        child: LinearProgressIndicator(
+                                          value: ratio,
+                                          minHeight: 5,
+                                          backgroundColor: Theme.of(context)
+                                              .colorScheme
+                                              .surface,
+                                        ),
+                                      ),
+                                    ],
+                                    const SizedBox(height: RitmaSpacing.sm),
+                                    Wrap(
+                                      spacing: RitmaSpacing.xs,
+                                      runSpacing: RitmaSpacing.xs,
+                                      children: [
+                                        FilledButton.tonalIcon(
+                                          onPressed: () async {
+                                            await showModalBottomSheet<void>(
+                                              context: context,
+                                              isScrollControlled: true,
+                                              builder: (_) =>
+                                                  _SessionRosterSheet(
+                                                    session: session,
+                                                  ),
+                                            );
+                                          },
+                                          icon: const Icon(
+                                            Icons.checklist_outlined,
+                                            size: 18,
+                                          ),
+                                          label: const Text('Live Roster'),
+                                        ),
+                                        if (canManage && !cancelled)
+                                          OutlinedButton(
+                                            onPressed: () => _cancelSession(
+                                              context,
+                                              ref,
+                                              orgId: workspace.organizationId,
+                                              sessionId: session.id,
+                                            ),
+                                            child: const Text('Cancel Session'),
+                                          ),
+                                      ],
+                                    ),
+                                  ],
                                 ),
                               ),
-                            );
-                          }
-                        }
-                      },
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('New Session'),
-                    )
-                  : IconButton(
-                      tooltip: 'Refresh sessions',
-                      onPressed: () => ref.invalidate(classSessionsProvider),
-                      icon: const Icon(Icons.refresh),
-                    ),
-            ),
-            const SizedBox(height: RitmaSpacing.md),
-            AsyncStateView<List<ClassSessionModel>>(
-              value: sessionsAsync,
-              isEmpty: (list) => list.isEmpty,
-              emptyTitle: 'No sessions scheduled',
-              emptyMessage: 'Tap New Session to publish a studio or gym class.',
-              onRetry: () => ref.invalidate(classSessionsProvider),
-              data: (sessions) {
-                final timeFmt = DateFormat.MMMEd().add_jm();
-                return Column(
-                  children: sessions.map((session) {
-                    final cancelled = session.status == SessionStatus.cancelled;
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: RitmaSpacing.sm),
-                      child: Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(RitmaSpacing.md),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Wrap(
-                                spacing: RitmaSpacing.xs,
-                                runSpacing: RitmaSpacing.xs,
-                                children: [
-                                  RitmaStatusPill(
-                                    label:
-                                        branchNames[session.branchId] ??
-                                        'Branch',
-                                    icon: Icons.storefront_outlined,
-                                  ),
-                                  RitmaStatusPill(
-                                    label: cancelled
-                                        ? 'CANCELLED'
-                                        : '${session.confirmedCount}/${session.capacity} booked',
-                                    tone: cancelled
-                                        ? RitmaPillTone.danger
-                                        : session.isFull
-                                        ? RitmaPillTone.warning
-                                        : RitmaPillTone.success,
-                                  ),
-                                  RitmaStatusPill(
-                                    label: '${session.creditCost} credit',
-                                    tone: RitmaPillTone.lime,
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: RitmaSpacing.xs),
-                              Text(
-                                session.title,
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                              const SizedBox(height: RitmaSpacing.xxs),
-                              Text(
-                                '${timeFmt.format(session.startsAt.toLocal())}'
-                                '${session.instructorDisplayName.isNotEmpty ? ' • ${session.instructorDisplayName}' : ''}',
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                              const SizedBox(height: RitmaSpacing.sm),
-                              Wrap(
-                                spacing: RitmaSpacing.xs,
-                                runSpacing: RitmaSpacing.xs,
-                                children: [
-                                  FilledButton.tonalIcon(
-                                    onPressed: () async {
-                                      await showModalBottomSheet<void>(
-                                        context: context,
-                                        isScrollControlled: true,
-                                        builder: (_) => _SessionRosterSheet(
-                                          session: session,
-                                        ),
-                                      );
-                                    },
-                                    icon: const Icon(
-                                      Icons.checklist_outlined,
-                                      size: 18,
-                                    ),
-                                    label: const Text('Live Roster'),
-                                  ),
-                                  if (canManage && !cancelled)
-                                    OutlinedButton(
-                                      onPressed: () => _cancelSession(
-                                        context,
-                                        ref,
-                                        orgId: workspace.organizationId,
-                                        sessionId: session.id,
-                                      ),
-                                      child: const Text('Cancel Session'),
-                                    ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                );
-              },
-            ),
-          ],
+                            ),
+                          );
+                        }).toList(),
+                      );
+                    },
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );

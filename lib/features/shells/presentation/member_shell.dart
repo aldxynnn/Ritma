@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../app/router/app_routes.dart';
 import '../../../core/theme/ritma_spacing.dart';
 import '../../../core/theme/ritma_theme.dart';
+import '../../../core/theme/theme_mode_provider.dart';
 import '../../../core/widgets/ritma_responsive_scaffold.dart';
 import '../../../core/widgets/ritma_status_pill.dart';
 import '../../auth/application/auth_providers.dart';
@@ -54,15 +55,22 @@ class MemberShell extends ConsumerWidget {
         appBarTitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(workspace?.organizationName ?? 'RITMA'),
+            Text(
+              workspace?.organizationName ?? 'RITMA',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
             if (workspace != null)
               Text(
                 '${workspace.scopeLabel} • Member Pass',
                 style: Theme.of(context).textTheme.bodySmall,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
           ],
         ),
         appBarActions: [
+          const ThemeModeToggleButton(),
           const NotificationsBellButton(),
           IconButton(
             tooltip: 'Switch Workspace',

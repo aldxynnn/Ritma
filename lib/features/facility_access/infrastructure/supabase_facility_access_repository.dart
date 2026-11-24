@@ -114,6 +114,20 @@ class SupabaseFacilityAccessRepository extends BaseRepository
     }, operation: 'lookupMembersForCheckIn');
   }
 
+  static const String _visitColumns =
+      'id, organization_id, branch_id, member_id, entitlement_id, '
+      'check_in_method, override_reason, checked_in_at, checked_out_at, '
+      'members(full_name)';
+
+  FacilityVisitModel _mapVisit(Map<dynamic, dynamic> raw) {
+    final map = Map<String, dynamic>.from(raw);
+    final memberRel = map.remove('members');
+    if (memberRel is Map && memberRel['full_name'] is String) {
+      map['member_name'] = memberRel['full_name'] as String;
+    }
+    return FacilityVisitModel.fromJson(map);
+  }
+
   @override
   Future<Result<List<FacilityVisitModel>>> fetchBranchVisits({
     required String orgId,
@@ -123,10 +137,7 @@ class SupabaseFacilityAccessRepository extends BaseRepository
     return guard(() async {
       var builder = _client
           .from('facility_visits')
-          .select(
-            'id, organization_id, branch_id, member_id, entitlement_id, '
-            'check_in_method, override_reason, checked_in_at, checked_out_at',
-          )
+          .select(_visitColumns)
           .eq('organization_id', orgId);
 
       if (branchId != null) {
@@ -135,12 +146,7 @@ class SupabaseFacilityAccessRepository extends BaseRepository
       final rows = await builder
           .order('checked_in_at', ascending: false)
           .limit(limit);
-      return rows
-          .map(
-            (row) =>
-                FacilityVisitModel.fromJson(Map<String, dynamic>.from(row)),
-          )
-          .toList();
+      return rows.map(_mapVisit).toList();
     }, operation: 'fetchBranchVisits');
   }
 
@@ -153,20 +159,12 @@ class SupabaseFacilityAccessRepository extends BaseRepository
     return guard(() async {
       final rows = await _client
           .from('facility_visits')
-          .select(
-            'id, organization_id, branch_id, member_id, entitlement_id, '
-            'check_in_method, override_reason, checked_in_at, checked_out_at',
-          )
+          .select(_visitColumns)
           .eq('organization_id', orgId)
           .eq('member_id', memberId)
           .order('checked_in_at', ascending: false)
           .limit(limit);
-      return rows
-          .map(
-            (row) =>
-                FacilityVisitModel.fromJson(Map<String, dynamic>.from(row)),
-          )
-          .toList();
+      return rows.map(_mapVisit).toList();
     }, operation: 'fetchMemberVisits');
   }
 }

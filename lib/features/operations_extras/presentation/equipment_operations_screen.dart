@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/theme/ritma_spacing.dart';
 import '../../../core/widgets/async_state_view.dart';
+import '../../../core/widgets/ritma_page_container.dart';
 import '../../../core/widgets/ritma_section_header.dart';
 import '../../../core/widgets/ritma_status_pill.dart';
 import '../../auth/application/auth_providers.dart';
@@ -47,167 +48,74 @@ class EquipmentOperationsScreen extends ConsumerWidget {
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(RitmaSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            RitmaSectionHeader(
-              title: 'Equipment Assets',
-              subtitle: 'Branch-scoped machines, rigs, and reformers',
-              trailing: FilledButton.icon(
-                onPressed: () async {
-                  final added = await showDialog<bool>(
-                    context: context,
-                    builder: (_) => _CreateAssetDialog(branches: branches),
-                  );
-                  if (added == true) {
-                    ref.invalidate(equipmentAssetsProvider);
-                  }
-                },
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Add Asset'),
+        child: RitmaPageContainer(
+          maxWidth: 960,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              RitmaSectionHeader(
+                title: 'Equipment Assets',
+                subtitle: 'Branch-scoped machines, rigs, and reformers',
+                trailing: FilledButton.icon(
+                  onPressed: () async {
+                    final added = await showDialog<bool>(
+                      context: context,
+                      builder: (_) => _CreateAssetDialog(branches: branches),
+                    );
+                    if (added == true) {
+                      ref.invalidate(equipmentAssetsProvider);
+                    }
+                  },
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Add Asset'),
+                ),
               ),
-            ),
-            const SizedBox(height: RitmaSpacing.sm),
-            AsyncStateView<List<EquipmentAssetModel>>(
-              value: assetsAsync,
-              isEmpty: (list) => list.isEmpty,
-              emptyTitle: 'No equipment assets registered',
-              emptyMessage:
-                  'Add machines or studio rigs to track service state.',
-              onRetry: () => ref.invalidate(equipmentAssetsProvider),
-              data: (list) => Column(
-                children: list.map((asset) {
-                  final tone = switch (asset.status) {
-                    EquipmentStatus.operational => RitmaPillTone.success,
-                    EquipmentStatus.needsService => RitmaPillTone.warning,
-                    EquipmentStatus.outOfOrder => RitmaPillTone.danger,
-                    EquipmentStatus.retired => RitmaPillTone.neutral,
-                  };
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: RitmaSpacing.xs),
-                    child: Card(
-                      child: ListTile(
-                        title: Text('${asset.name} (${asset.assetCode})'),
-                        subtitle: Text(asset.category),
-                        trailing: Wrap(
-                          spacing: RitmaSpacing.xs,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            RitmaStatusPill(
-                              label: asset.status.displayLabel,
-                              tone: tone,
-                            ),
-                            PopupMenuButton<EquipmentStatus>(
-                              tooltip: 'Change asset status',
-                              onSelected: (next) async {
-                                final repo = ref.read(
-                                  operationsExtrasRepositoryProvider,
-                                );
-                                if (repo == null) return;
-                                final res = await repo.updateEquipmentStatus(
-                                  orgId: workspace.organizationId,
-                                  assetId: asset.id,
-                                  status: next,
-                                );
-                                if (!context.mounted) return;
-                                res.when(
-                                  success: (_) =>
-                                      ref.invalidate(equipmentAssetsProvider),
-                                  failure: (f) => ScaffoldMessenger.of(context)
-                                      .showSnackBar(
-                                        SnackBar(content: Text(f.message)),
-                                      ),
-                                );
-                              },
-                              itemBuilder: (_) => EquipmentStatus.values
-                                  .map(
-                                    (s) => PopupMenuItem<EquipmentStatus>(
-                                      value: s,
-                                      child: Text(s.displayLabel),
-                                    ),
-                                  )
-                                  .toList(),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-            const SizedBox(height: RitmaSpacing.lg),
-            RitmaSectionHeader(
-              title: 'Maintenance Tickets',
-              subtitle: 'Open equipment defects and repair tracking',
-              trailing: OutlinedButton.icon(
-                onPressed: assets.isEmpty
-                    ? null
-                    : () async {
-                        final added = await showDialog<bool>(
-                          context: context,
-                          builder: (_) => _CreateTicketDialog(assets: assets),
-                        );
-                        if (added == true) {
-                          ref.invalidate(maintenanceTicketsProvider);
-                        }
-                      },
-                icon: const Icon(Icons.build_outlined, size: 18),
-                label: const Text('Log Ticket'),
-              ),
-            ),
-            const SizedBox(height: RitmaSpacing.sm),
-            AsyncStateView<List<MaintenanceTicketModel>>(
-              value: ticketsAsync,
-              isEmpty: (list) => list.isEmpty,
-              emptyTitle: 'No maintenance tickets',
-              emptyMessage: 'Everything in this scope is running smoothly.',
-              onRetry: () => ref.invalidate(maintenanceTicketsProvider),
-              data: (tickets) {
-                final fmt = DateFormat.MMMd().add_jm();
-                return Column(
-                  children: tickets.map((t) {
-                    final asset = assetMap[t.assetId];
-                    final tone = switch (t.status) {
-                      TicketStatus.open => RitmaPillTone.warning,
-                      TicketStatus.inProgress => RitmaPillTone.lime,
-                      TicketStatus.resolved => RitmaPillTone.success,
-                      TicketStatus.closed => RitmaPillTone.neutral,
+              const SizedBox(height: RitmaSpacing.sm),
+              AsyncStateView<List<EquipmentAssetModel>>(
+                value: assetsAsync,
+                isEmpty: (list) => list.isEmpty,
+                emptyTitle: 'No equipment assets registered',
+                emptyMessage:
+                    'Add machines or studio rigs to track service state.',
+                onRetry: () => ref.invalidate(equipmentAssetsProvider),
+                data: (list) => Column(
+                  children: list.map((asset) {
+                    final tone = switch (asset.status) {
+                      EquipmentStatus.operational => RitmaPillTone.success,
+                      EquipmentStatus.needsService => RitmaPillTone.warning,
+                      EquipmentStatus.outOfOrder => RitmaPillTone.danger,
+                      EquipmentStatus.retired => RitmaPillTone.neutral,
                     };
                     return Padding(
                       padding: const EdgeInsets.only(bottom: RitmaSpacing.xs),
                       child: Card(
                         child: ListTile(
-                          title: Text(t.summary),
-                          subtitle: Text(
-                            '${asset?.assetCode ?? 'Asset'} • ${t.priority.displayLabel} priority • ${fmt.format(t.createdAt.toLocal())}',
-                          ),
+                          title: Text('${asset.name} (${asset.assetCode})'),
+                          subtitle: Text(asset.category),
                           trailing: Wrap(
                             spacing: RitmaSpacing.xs,
                             crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
                               RitmaStatusPill(
-                                label: t.status.displayLabel,
+                                label: asset.status.displayLabel,
                                 tone: tone,
                               ),
-                              PopupMenuButton<TicketStatus>(
-                                tooltip: 'Update ticket status',
+                              PopupMenuButton<EquipmentStatus>(
+                                tooltip: 'Change asset status',
                                 onSelected: (next) async {
                                   final repo = ref.read(
                                     operationsExtrasRepositoryProvider,
                                   );
                                   if (repo == null) return;
-                                  final res = await repo.updateTicketStatus(
+                                  final res = await repo.updateEquipmentStatus(
                                     orgId: workspace.organizationId,
-                                    ticketId: t.id,
+                                    assetId: asset.id,
                                     status: next,
                                   );
                                   if (!context.mounted) return;
                                   res.when(
-                                    success: (_) => ref.invalidate(
-                                      maintenanceTicketsProvider,
-                                    ),
+                                    success: (_) =>
+                                        ref.invalidate(equipmentAssetsProvider),
                                     failure: (f) =>
                                         ScaffoldMessenger.of(
                                           context,
@@ -216,9 +124,9 @@ class EquipmentOperationsScreen extends ConsumerWidget {
                                         ),
                                   );
                                 },
-                                itemBuilder: (_) => TicketStatus.values
+                                itemBuilder: (_) => EquipmentStatus.values
                                     .map(
-                                      (s) => PopupMenuItem<TicketStatus>(
+                                      (s) => PopupMenuItem<EquipmentStatus>(
                                         value: s,
                                         child: Text(s.displayLabel),
                                       ),
@@ -231,10 +139,107 @@ class EquipmentOperationsScreen extends ConsumerWidget {
                       ),
                     );
                   }).toList(),
-                );
-              },
-            ),
-          ],
+                ),
+              ),
+              const SizedBox(height: RitmaSpacing.lg),
+              RitmaSectionHeader(
+                title: 'Maintenance Tickets',
+                subtitle: 'Open equipment defects and repair tracking',
+                trailing: OutlinedButton.icon(
+                  onPressed: assets.isEmpty
+                      ? null
+                      : () async {
+                          final added = await showDialog<bool>(
+                            context: context,
+                            builder: (_) => _CreateTicketDialog(assets: assets),
+                          );
+                          if (added == true) {
+                            ref.invalidate(maintenanceTicketsProvider);
+                          }
+                        },
+                  icon: const Icon(Icons.build_outlined, size: 18),
+                  label: const Text('Log Ticket'),
+                ),
+              ),
+              const SizedBox(height: RitmaSpacing.sm),
+              AsyncStateView<List<MaintenanceTicketModel>>(
+                value: ticketsAsync,
+                isEmpty: (list) => list.isEmpty,
+                emptyTitle: 'No maintenance tickets',
+                emptyMessage: 'Everything in this scope is running smoothly.',
+                onRetry: () => ref.invalidate(maintenanceTicketsProvider),
+                data: (tickets) {
+                  final fmt = DateFormat.MMMd().add_jm();
+                  return Column(
+                    children: tickets.map((t) {
+                      final asset = assetMap[t.assetId];
+                      final tone = switch (t.status) {
+                        TicketStatus.open => RitmaPillTone.warning,
+                        TicketStatus.inProgress => RitmaPillTone.lime,
+                        TicketStatus.resolved => RitmaPillTone.success,
+                        TicketStatus.closed => RitmaPillTone.neutral,
+                      };
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: RitmaSpacing.xs),
+                        child: Card(
+                          child: ListTile(
+                            title: Text(t.summary),
+                            subtitle: Text(
+                              '${asset?.assetCode ?? 'Asset'} • ${t.priority.displayLabel} priority • ${fmt.format(t.createdAt.toLocal())}',
+                            ),
+                            trailing: Wrap(
+                              spacing: RitmaSpacing.xs,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                RitmaStatusPill(
+                                  label: t.status.displayLabel,
+                                  tone: tone,
+                                ),
+                                PopupMenuButton<TicketStatus>(
+                                  tooltip: 'Update ticket status',
+                                  onSelected: (next) async {
+                                    final repo = ref.read(
+                                      operationsExtrasRepositoryProvider,
+                                    );
+                                    if (repo == null) return;
+                                    final res = await repo.updateTicketStatus(
+                                      orgId: workspace.organizationId,
+                                      ticketId: t.id,
+                                      status: next,
+                                    );
+                                    if (!context.mounted) return;
+                                    res.when(
+                                      success: (_) => ref.invalidate(
+                                        maintenanceTicketsProvider,
+                                      ),
+                                      failure: (f) =>
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            SnackBar(content: Text(f.message)),
+                                          ),
+                                    );
+                                  },
+                                  itemBuilder: (_) => TicketStatus.values
+                                      .map(
+                                        (s) => PopupMenuItem<TicketStatus>(
+                                          value: s,
+                                          child: Text(s.displayLabel),
+                                        ),
+                                      )
+                                      .toList(),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -257,6 +262,7 @@ class _CreateAssetDialogState extends ConsumerState<_CreateAssetDialog> {
   final _catCtrl = TextEditingController(text: 'Strength');
   String? _branchId;
   bool _saving = false;
+  String? _inlineError;
 
   @override
   void dispose() {
@@ -273,48 +279,69 @@ class _CreateAssetDialogState extends ConsumerState<_CreateAssetDialog> {
 
     return AlertDialog(
       title: const Text('Register Equipment Asset'),
-      content: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (workspace?.branchId == null && widget.branches.isNotEmpty) ...[
-              DropdownButtonFormField<String>(
-                initialValue: _branchId,
-                decoration: const InputDecoration(labelText: 'Branch'),
-                items: widget.branches
-                    .map(
-                      (b) => DropdownMenuItem<String>(
-                        value: b.id,
-                        child: Text(b.name),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (v) => setState(() => _branchId = v),
-              ),
-              const SizedBox(height: RitmaSpacing.xs),
-            ],
-            TextFormField(
-              controller: _codeCtrl,
-              decoration: const InputDecoration(labelText: 'Asset Code'),
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Required' : null,
+      content: SizedBox(
+        width: 400,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (_inlineError != null) ...[
+                  Text(
+                    _inlineError!,
+                    style: Theme.of(context).textTheme.bodySmall
+                        ?.copyWith(color: Theme.of(context).colorScheme.error),
+                  ),
+                  const SizedBox(height: RitmaSpacing.sm),
+                ],
+                if (workspace?.branchId == null &&
+                    widget.branches.isNotEmpty) ...[
+                  DropdownButtonFormField<String>(
+                    initialValue: _branchId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'Branch'),
+                    items: widget.branches
+                        .map(
+                          (b) => DropdownMenuItem<String>(
+                            value: b.id,
+                            child: Text(
+                              b.name,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) => setState(() => _branchId = v),
+                  ),
+                  const SizedBox(height: RitmaSpacing.xs),
+                ],
+                TextFormField(
+                  controller: _codeCtrl,
+                  decoration: const InputDecoration(labelText: 'Asset Code'),
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? 'Required' : null,
+                ),
+                const SizedBox(height: RitmaSpacing.xs),
+                TextFormField(
+                  controller: _nameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Equipment Name',
+                  ),
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? 'Required' : null,
+                ),
+                const SizedBox(height: RitmaSpacing.xs),
+                TextFormField(
+                  controller: _catCtrl,
+                  decoration: const InputDecoration(labelText: 'Category'),
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? 'Required' : null,
+                ),
+              ],
             ),
-            const SizedBox(height: RitmaSpacing.xs),
-            TextFormField(
-              controller: _nameCtrl,
-              decoration: const InputDecoration(labelText: 'Equipment Name'),
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Required' : null,
-            ),
-            const SizedBox(height: RitmaSpacing.xs),
-            TextFormField(
-              controller: _catCtrl,
-              decoration: const InputDecoration(labelText: 'Category'),
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Required' : null,
-            ),
-          ],
+          ),
         ),
       ),
       actions: [
@@ -323,13 +350,24 @@ class _CreateAssetDialogState extends ConsumerState<_CreateAssetDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: _saving || _branchId == null
+          onPressed: _saving
               ? null
               : () async {
-                  if (!(_formKey.currentState?.validate() ?? false)) return;
+                  if (!(_formKey.currentState?.validate() ?? false)) {
+                    setState(
+                      () => _inlineError = 'Fix the highlighted fields.',
+                    );
+                    return;
+                  }
                   final repo = ref.read(operationsExtrasRepositoryProvider);
-                  if (repo == null || workspace == null) return;
-                  setState(() => _saving = true);
+                  if (repo == null || workspace == null || _branchId == null) {
+                    setState(() => _inlineError = 'Select a branch first.');
+                    return;
+                  }
+                  setState(() {
+                    _saving = true;
+                    _inlineError = null;
+                  });
                   final res = await repo.createEquipmentAsset(
                     orgId: workspace.organizationId,
                     branchId: _branchId!,
@@ -341,9 +379,7 @@ class _CreateAssetDialogState extends ConsumerState<_CreateAssetDialog> {
                   setState(() => _saving = false);
                   res.when(
                     success: (_) => Navigator.of(context).pop(true),
-                    failure: (f) =>
-                        ScaffoldMessenger.of(context)
-                            .showSnackBar(SnackBar(content: Text(f.message))),
+                    failure: (f) => setState(() => _inlineError = f.message),
                   );
                 },
           child: Text(_saving ? 'Saving...' : 'Add Asset'),
@@ -369,6 +405,7 @@ class _CreateTicketDialogState extends ConsumerState<_CreateTicketDialog> {
   String? _assetId;
   TicketPriority _priority = TicketPriority.normal;
   bool _saving = false;
+  String? _inlineError;
 
   @override
   void dispose() {
@@ -381,49 +418,73 @@ class _CreateTicketDialogState extends ConsumerState<_CreateTicketDialog> {
     _assetId ??= widget.assets.firstOrNull?.id;
     return AlertDialog(
       title: const Text('Log Maintenance Ticket'),
-      content: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            DropdownButtonFormField<String>(
-              initialValue: _assetId,
-              decoration: const InputDecoration(labelText: 'Equipment Asset'),
-              items: widget.assets
-                  .map(
-                    (a) => DropdownMenuItem<String>(
-                      value: a.id,
-                      child: Text('${a.assetCode} — ${a.name}'),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (v) => setState(() => _assetId = v),
+      content: SizedBox(
+        width: 400,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (_inlineError != null) ...[
+                  Text(
+                    _inlineError!,
+                    style: Theme.of(context).textTheme.bodySmall
+                        ?.copyWith(color: Theme.of(context).colorScheme.error),
+                  ),
+                  const SizedBox(height: RitmaSpacing.sm),
+                ],
+                DropdownButtonFormField<String>(
+                  initialValue: _assetId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Equipment Asset',
+                  ),
+                  items: widget.assets
+                      .map(
+                        (a) => DropdownMenuItem<String>(
+                          value: a.id,
+                          child: Text(
+                            '${a.assetCode} — ${a.name}',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (v) => setState(() => _assetId = v),
+                ),
+                const SizedBox(height: RitmaSpacing.xs),
+                DropdownButtonFormField<TicketPriority>(
+                  initialValue: _priority,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Priority'),
+                  items: TicketPriority.values
+                      .map(
+                        (p) => DropdownMenuItem<TicketPriority>(
+                          value: p,
+                          child: Text(
+                            p.displayLabel,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (v) {
+                    if (v != null) setState(() => _priority = v);
+                  },
+                ),
+                const SizedBox(height: RitmaSpacing.xs),
+                TextFormField(
+                  controller: _summaryCtrl,
+                  decoration: const InputDecoration(labelText: 'Issue Summary'),
+                  maxLines: 2,
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? 'Required' : null,
+                ),
+              ],
             ),
-            const SizedBox(height: RitmaSpacing.xs),
-            DropdownButtonFormField<TicketPriority>(
-              initialValue: _priority,
-              decoration: const InputDecoration(labelText: 'Priority'),
-              items: TicketPriority.values
-                  .map(
-                    (p) => DropdownMenuItem<TicketPriority>(
-                      value: p,
-                      child: Text(p.displayLabel),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (v) {
-                if (v != null) setState(() => _priority = v);
-              },
-            ),
-            const SizedBox(height: RitmaSpacing.xs),
-            TextFormField(
-              controller: _summaryCtrl,
-              decoration: const InputDecoration(labelText: 'Issue Summary'),
-              maxLines: 2,
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Required' : null,
-            ),
-          ],
+          ),
         ),
       ),
       actions: [
@@ -432,19 +493,28 @@ class _CreateTicketDialogState extends ConsumerState<_CreateTicketDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: _saving || _assetId == null
+          onPressed: _saving
               ? null
               : () async {
-                  if (!(_formKey.currentState?.validate() ?? false)) return;
+                  if (!(_formKey.currentState?.validate() ?? false)) {
+                    setState(
+                      () => _inlineError = 'Fix the highlighted fields.',
+                    );
+                    return;
+                  }
                   final workspace = ref.read(activeWorkspaceProvider);
                   final repo = ref.read(operationsExtrasRepositoryProvider);
                   final asset = widget.assets
                       .where((a) => a.id == _assetId)
                       .firstOrNull;
                   if (workspace == null || repo == null || asset == null) {
+                    setState(() => _inlineError = 'Select an equipment asset.');
                     return;
                   }
-                  setState(() => _saving = true);
+                  setState(() {
+                    _saving = true;
+                    _inlineError = null;
+                  });
                   final res = await repo.createMaintenanceTicket(
                     orgId: workspace.organizationId,
                     branchId: asset.branchId,
@@ -456,9 +526,7 @@ class _CreateTicketDialogState extends ConsumerState<_CreateTicketDialog> {
                   setState(() => _saving = false);
                   res.when(
                     success: (_) => Navigator.of(context).pop(true),
-                    failure: (f) =>
-                        ScaffoldMessenger.of(context)
-                            .showSnackBar(SnackBar(content: Text(f.message))),
+                    failure: (f) => setState(() => _inlineError = f.message),
                   );
                 },
           child: Text(_saving ? 'Submitting...' : 'Log Ticket'),

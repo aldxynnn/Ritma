@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/theme/ritma_spacing.dart';
 import '../../../core/widgets/async_state_view.dart';
+import '../../../core/widgets/ritma_page_container.dart';
 import '../../../core/widgets/ritma_section_header.dart';
 import '../../../core/widgets/ritma_status_pill.dart';
 import '../../auth/application/auth_providers.dart';
@@ -41,175 +42,195 @@ class PtSessionsView extends ConsumerWidget {
       },
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(RitmaSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            RitmaSectionHeader(
-              title: 'Personal Training',
-              subtitle:
-                  '1-on-1 coaching sessions backed strictly by PT Credits',
-              trailing: canBookPt
-                  ? FilledButton.icon(
-                      onPressed: () async {
-                        final booked = await showDialog<bool>(
-                          context: context,
-                          builder: (_) => const _BookPtSessionDialog(),
-                        );
-                        if (booked == true) {
-                          ref.invalidate(ptSessionsProvider);
-                        }
-                      },
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('Book PT'),
-                    )
-                  : null,
-            ),
-            const SizedBox(height: RitmaSpacing.md),
-            Text(
-              'Active Trainers',
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
-            const SizedBox(height: RitmaSpacing.xs),
-            AsyncStateView<List<TrainerProfileModel>>(
-              value: trainersAsync,
-              isEmpty: (list) => list.isEmpty,
-              emptyTitle: 'No trainers active yet',
-              emptyMessage: 'Active coach profiles configured for your organization appear here.',
-              onRetry: () => ref.invalidate(orgTrainersProvider),
-              data: (trainers) => Column(
-                children: trainers
-                    .map(
-                      (trainer) => Padding(
-                        padding: const EdgeInsets.only(bottom: RitmaSpacing.xs),
-                        child: Card(
-                          child: ListTile(
-                            leading: const Icon(Icons.fitness_center_outlined),
-                            title: Text(
-                              trainer.displayName.isNotEmpty
-                                  ? trainer.displayName
-                                  : 'Trainer ${trainer.id.substring(0, 8)}',
-                            ),
-                            subtitle: Text(
-                              [
-                                if (trainer.specialties.isNotEmpty)
-                                  trainer.specialties.join(' • '),
-                                if (trainer.bio.isNotEmpty) trainer.bio,
-                              ].join('\n'),
-                            ),
-                            trailing: RitmaStatusPill(
-                              label: '${trainer.defaultCreditCost} PT credit',
-                              tone: RitmaPillTone.lime,
+        child: RitmaPageContainer(
+          maxWidth: 1200,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              RitmaSectionHeader(
+                title: 'Personal Training',
+                subtitle:
+                    '1-on-1 coaching sessions backed strictly by PT Credits',
+                trailing: canBookPt
+                    ? FilledButton.icon(
+                        onPressed: () async {
+                          final booked = await showDialog<bool>(
+                            context: context,
+                            builder: (_) => const _BookPtSessionDialog(),
+                          );
+                          if (booked == true) {
+                            ref.invalidate(ptSessionsProvider);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('PT session booked.'),
+                                ),
+                              );
+                            }
+                          }
+                        },
+                        icon: const Icon(Icons.add, size: 18),
+                        label: const Text('Book PT'),
+                      )
+                    : null,
+              ),
+              const SizedBox(height: RitmaSpacing.md),
+              Text(
+                'Active Trainers',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const SizedBox(height: RitmaSpacing.xs),
+              AsyncStateView<List<TrainerProfileModel>>(
+                value: trainersAsync,
+                isEmpty: (list) => list.isEmpty,
+                emptyTitle: 'No trainers active yet',
+                emptyMessage: 'Active coach profiles configured for your organization appear here.',
+                onRetry: () => ref.invalidate(orgTrainersProvider),
+                data: (trainers) => Column(
+                  children: trainers
+                      .map(
+                        (trainer) => Padding(
+                          padding: const EdgeInsets.only(
+                            bottom: RitmaSpacing.xs,
+                          ),
+                          child: Card(
+                            child: ListTile(
+                              leading: const Icon(
+                                Icons.fitness_center_outlined,
+                              ),
+                              title: Text(
+                                trainer.displayName.isNotEmpty
+                                    ? trainer.displayName
+                                    : 'Trainer ${trainer.id.substring(0, 8)}',
+                              ),
+                              subtitle: Text(
+                                [
+                                  if (trainer.specialties.isNotEmpty)
+                                    trainer.specialties.join(' • '),
+                                  if (trainer.bio.isNotEmpty) trainer.bio,
+                                ].join('\n'),
+                              ),
+                              trailing: RitmaStatusPill(
+                                label: '${trainer.defaultCreditCost} PT credit',
+                                tone: RitmaPillTone.lime,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    )
-                    .toList(),
+                      )
+                      .toList(),
+                ),
               ),
-            ),
-            const SizedBox(height: RitmaSpacing.lg),
-            RitmaSectionHeader(
-              title: 'Scheduled & Completed Sessions',
-              trailing: IconButton(
-                tooltip: 'Refresh PT sessions',
-                onPressed: () => ref.invalidate(ptSessionsProvider),
-                icon: const Icon(Icons.refresh),
+              const SizedBox(height: RitmaSpacing.lg),
+              RitmaSectionHeader(
+                title: 'Scheduled & Completed Sessions',
+                trailing: IconButton(
+                  tooltip: 'Refresh PT sessions',
+                  onPressed: () => ref.invalidate(ptSessionsProvider),
+                  icon: const Icon(Icons.refresh),
+                ),
               ),
-            ),
-            const SizedBox(height: RitmaSpacing.xs),
-            AsyncStateView<List<PtSessionModel>>(
-              value: sessionsAsync,
-              isEmpty: (list) => list.isEmpty,
-              emptyTitle: 'No PT sessions booked yet',
-              emptyMessage:
-                  'Book a 1-on-1 training slot using active PT Credits.',
-              onRetry: () => ref.invalidate(ptSessionsProvider),
-              data: (sessions) {
-                final timeFmt = DateFormat.MMMEd().add_jm();
-                return Column(
-                  children: sessions.map((session) {
-                    final tone = switch (session.status) {
-                      PtSessionStatus.scheduled => RitmaPillTone.lime,
-                      PtSessionStatus.completed => RitmaPillTone.success,
-                      PtSessionStatus.cancelledEarly => RitmaPillTone.neutral,
-                      PtSessionStatus.cancelledLate => RitmaPillTone.danger,
-                      PtSessionStatus.noShow => RitmaPillTone.warning,
-                    };
-                    final trainerLabel = session.trainerDisplayName.isNotEmpty
-                        ? session.trainerDisplayName
-                        : 'Trainer ${session.trainerId.substring(0, 8)}';
-                    final memberLabel = session.memberDisplayName.isNotEmpty
-                        ? session.memberDisplayName
-                        : 'Member ${session.memberId.substring(0, 8)}';
+              const SizedBox(height: RitmaSpacing.xs),
+              AsyncStateView<List<PtSessionModel>>(
+                value: sessionsAsync,
+                isEmpty: (list) => list.isEmpty,
+                emptyTitle: 'No PT sessions booked yet',
+                emptyMessage:
+                    'Book a 1-on-1 training slot using active PT Credits.',
+                onRetry: () => ref.invalidate(ptSessionsProvider),
+                data: (sessions) {
+                  final timeFmt = DateFormat.MMMEd().add_jm();
+                  return Column(
+                    children: sessions.map((session) {
+                      final tone = switch (session.status) {
+                        PtSessionStatus.scheduled => RitmaPillTone.lime,
+                        PtSessionStatus.completed => RitmaPillTone.success,
+                        PtSessionStatus.cancelledEarly => RitmaPillTone.neutral,
+                        PtSessionStatus.cancelledLate => RitmaPillTone.danger,
+                        PtSessionStatus.noShow => RitmaPillTone.warning,
+                      };
+                      final trainerLabel = session.trainerDisplayName.isNotEmpty
+                          ? session.trainerDisplayName
+                          : 'Trainer ${session.trainerId.substring(0, 8)}';
+                      final memberLabel = session.memberDisplayName.isNotEmpty
+                          ? session.memberDisplayName
+                          : 'Member ${session.memberId.substring(0, 8)}';
 
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: RitmaSpacing.sm),
-                      child: Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(RitmaSpacing.md),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Wrap(
-                                spacing: RitmaSpacing.xs,
-                                runSpacing: RitmaSpacing.xs,
-                                children: [
-                                  RitmaStatusPill(
-                                    label: session.status.displayLabel,
-                                    tone: tone,
-                                  ),
-                                  RitmaStatusPill(
-                                    label: '${session.creditCost} PT credit',
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: RitmaSpacing.xs),
-                              Text(
-                                '$trainerLabel × $memberLabel',
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                              const SizedBox(height: RitmaSpacing.xxs),
-                              Text(
-                                '${timeFmt.format(session.startsAt.toLocal())} – ${DateFormat.jm().format(session.endsAt.toLocal())}',
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                              if (session.notes != null &&
-                                  session.notes!.isNotEmpty) ...[
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: RitmaSpacing.sm),
+                        child: Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(RitmaSpacing.md),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Wrap(
+                                  spacing: RitmaSpacing.xs,
+                                  runSpacing: RitmaSpacing.xs,
+                                  children: [
+                                    RitmaStatusPill(
+                                      label: session.status.displayLabel,
+                                      tone: tone,
+                                    ),
+                                    RitmaStatusPill(
+                                      label: '${session.creditCost} PT credit',
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: RitmaSpacing.xs),
+                                Text(
+                                  '$trainerLabel × $memberLabel',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleMedium,
+                                ),
                                 const SizedBox(height: RitmaSpacing.xxs),
                                 Text(
-                                  'Notes: ${session.notes}',
+                                  '${timeFmt.format(session.startsAt.toLocal())} – ${DateFormat.jm().format(session.endsAt.toLocal())}',
                                   style: Theme.of(context).textTheme.bodySmall,
                                 ),
-                              ],
-                              if (canManagePt &&
-                                  session.status ==
-                                      PtSessionStatus.scheduled) ...[
-                                const SizedBox(height: RitmaSpacing.sm),
-                                OutlinedButton.icon(
-                                  onPressed: () => _completeSession(
-                                    context,
-                                    ref,
-                                    orgId: workspace.organizationId,
-                                    session: session,
+                                if (session.notes != null &&
+                                    session.notes!.isNotEmpty) ...[
+                                  const SizedBox(height: RitmaSpacing.xxs),
+                                  Text(
+                                    'Notes: ${session.notes}',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall,
                                   ),
-                                  icon: const Icon(
-                                    Icons.check_circle_outline,
-                                    size: 18,
+                                ],
+                                if (canManagePt &&
+                                    session.status ==
+                                        PtSessionStatus.scheduled) ...[
+                                  const SizedBox(height: RitmaSpacing.sm),
+                                  Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: OutlinedButton.icon(
+                                      onPressed: () => _completeSession(
+                                        context,
+                                        ref,
+                                        orgId: workspace.organizationId,
+                                        session: session,
+                                      ),
+                                      icon: const Icon(
+                                        Icons.check_circle_outline,
+                                        size: 18,
+                                      ),
+                                      label: const Text('Complete Session'),
+                                    ),
                                   ),
-                                  label: const Text('Complete Session'),
-                                ),
+                                ],
                               ],
-                            ],
+                            ),
                           ),
                         ),
-                      ),
-                    );
-                  }).toList(),
-                );
-              },
-            ),
-          ],
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -221,34 +242,11 @@ class PtSessionsView extends ConsumerWidget {
     required String orgId,
     required PtSessionModel session,
   }) async {
-    final notesController = TextEditingController();
-    final confirm = await showDialog<bool>(
+    final notes = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Complete PT Session'),
-        content: TextField(
-          controller: notesController,
-          decoration: const InputDecoration(
-            labelText: 'Coaching Notes (optional)',
-            hintText: 'Progressive overload targets or recovery notes',
-          ),
-          maxLines: 2,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Mark Completed'),
-          ),
-        ],
-      ),
+      builder: (_) => const _CompletePtSessionDialog(),
     );
-    final notes = notesController.text;
-    notesController.dispose();
-    if (confirm != true || !context.mounted) {
+    if (notes == null || !context.mounted) {
       return;
     }
 
@@ -278,6 +276,49 @@ class PtSessionsView extends ConsumerWidget {
   }
 }
 
+class _CompletePtSessionDialog extends StatefulWidget {
+  const _CompletePtSessionDialog();
+
+  @override
+  State<_CompletePtSessionDialog> createState() =>
+      _CompletePtSessionDialogState();
+}
+
+class _CompletePtSessionDialogState extends State<_CompletePtSessionDialog> {
+  final _notesController = TextEditingController();
+
+  @override
+  void dispose() {
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Complete PT Session'),
+      content: TextField(
+        controller: _notesController,
+        decoration: const InputDecoration(
+          labelText: 'Coaching Notes (optional)',
+          hintText: 'Progressive overload targets or recovery notes',
+        ),
+        maxLines: 2,
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_notesController.text),
+          child: const Text('Mark Completed'),
+        ),
+      ],
+    );
+  }
+}
+
 class _BookPtSessionDialog extends ConsumerStatefulWidget {
   const _BookPtSessionDialog();
 
@@ -292,6 +333,7 @@ class _BookPtSessionDialogState extends ConsumerState<_BookPtSessionDialog> {
   int _dayOffset = 1;
   int _hourBranchLocal = 10;
   bool _saving = false;
+  String? _inlineError;
 
   Future<void> _submit(
     List<TrainerProfileModel> trainers,
@@ -303,14 +345,25 @@ class _BookPtSessionDialogState extends ConsumerState<_BookPtSessionDialog> {
     final memberId = workspace?.isOperationsSurface == false
         ? workspace?.memberId
         : _memberId;
-    if (workspace == null ||
-        repo == null ||
-        trainer == null ||
-        memberId == null) {
+    if (workspace == null || repo == null) {
+      setState(
+        () => _inlineError = 'PT booking service is unavailable right now.',
+      );
+      return;
+    }
+    if (trainer == null) {
+      setState(() => _inlineError = 'Select an active trainer.');
+      return;
+    }
+    if (memberId == null) {
+      setState(() => _inlineError = 'Select a member for this PT session.');
       return;
     }
 
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      _inlineError = null;
+    });
     final branchTz = branches
         .where((b) => b.id == trainer.homeBranchId)
         .firstOrNull
@@ -347,18 +400,16 @@ class _BookPtSessionDialogState extends ConsumerState<_BookPtSessionDialog> {
         ref.invalidate(memberWalletProvider(memberId));
         Navigator.of(context).pop(true);
       },
-      failure: (failure) =>
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text(failure.message))),
+      failure: (failure) => setState(() => _inlineError = failure.message),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final workspace = ref.watch(activeWorkspaceProvider);
+    final trainersAsync = ref.watch(orgTrainersProvider);
     final trainers =
-        ref.watch(orgTrainersProvider).asData?.value ??
-        const <TrainerProfileModel>[];
+        trainersAsync.asData?.value ?? const <TrainerProfileModel>[];
     final branches =
         ref.watch(orgBranchesProvider).asData?.value ?? const <BranchModel>[];
     final members = workspace?.isOperationsSurface == true
@@ -374,16 +425,40 @@ class _BookPtSessionDialogState extends ConsumerState<_BookPtSessionDialog> {
     return AlertDialog(
       title: const Text('Book Personal Training'),
       content: SizedBox(
-        width: 400,
+        width: 420,
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (trainers.isEmpty)
+              if (_inlineError != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(RitmaSpacing.sm),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.error
+                        .withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(RitmaRadius.md),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                  child: Text(
+                    _inlineError!,
+                    style: Theme.of(context).textTheme.bodySmall
+                        ?.copyWith(color: Theme.of(context).colorScheme.error),
+                  ),
+                ),
+                const SizedBox(height: RitmaSpacing.sm),
+              ],
+              if (trainersAsync.isLoading) ...[
+                const LinearProgressIndicator(),
+                const SizedBox(height: RitmaSpacing.sm),
+              ] else if (trainers.isEmpty)
                 const Text('No active trainers available.')
               else
                 DropdownButtonFormField<String>(
                   initialValue: _trainerId,
+                  isExpanded: true,
                   decoration: const InputDecoration(labelText: 'Trainer'),
                   items: trainers
                       .map(
@@ -393,6 +468,7 @@ class _BookPtSessionDialogState extends ConsumerState<_BookPtSessionDialog> {
                             t.displayName.isNotEmpty
                                 ? '${t.displayName} (${t.defaultCreditCost} PT)'
                                 : 'Trainer ${t.id.substring(0, 8)}',
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       )
@@ -404,12 +480,16 @@ class _BookPtSessionDialogState extends ConsumerState<_BookPtSessionDialog> {
                 const SizedBox(height: RitmaSpacing.xs),
                 DropdownButtonFormField<String>(
                   initialValue: _memberId,
+                  isExpanded: true,
                   decoration: const InputDecoration(labelText: 'Member'),
                   items: members
                       .map(
                         (m) => DropdownMenuItem<String>(
                           value: m.id,
-                          child: Text('${m.fullName} (${m.memberCode})'),
+                          child: Text(
+                            '${m.fullName} (${m.memberCode})',
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       )
                       .toList(),
@@ -422,19 +502,29 @@ class _BookPtSessionDialogState extends ConsumerState<_BookPtSessionDialog> {
                   Expanded(
                     child: DropdownButtonFormField<int>(
                       initialValue: _dayOffset,
+                      isExpanded: true,
                       decoration: const InputDecoration(labelText: 'Day'),
                       items: const [
                         DropdownMenuItem<int>(
                           value: 1,
-                          child: Text('Tomorrow'),
+                          child: Text(
+                            'Tomorrow',
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                         DropdownMenuItem<int>(
                           value: 2,
-                          child: Text('In 2 Days'),
+                          child: Text(
+                            'In 2 Days',
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                         DropdownMenuItem<int>(
                           value: 3,
-                          child: Text('In 3 Days'),
+                          child: Text(
+                            'In 3 Days',
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ],
                       onChanged: (v) {
@@ -446,6 +536,7 @@ class _BookPtSessionDialogState extends ConsumerState<_BookPtSessionDialog> {
                   Expanded(
                     child: DropdownButtonFormField<int>(
                       initialValue: _hourBranchLocal,
+                      isExpanded: true,
                       decoration: const InputDecoration(
                         labelText: 'Start Time',
                       ),

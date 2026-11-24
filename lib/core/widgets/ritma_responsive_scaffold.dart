@@ -43,14 +43,28 @@ class RitmaResponsiveScaffold extends StatelessWidget {
       builder: (context, constraints) {
         final width = constraints.maxWidth;
         final isCompact = width < 600;
-        final isExpanded = width >= 1024;
+        final isExpanded = width >= 960;
         final safeIndex = selectedIndex.clamp(0, destinations.length - 1);
+
+        final PreferredSizeWidget? appBar =
+            appBarTitle != null || appBarActions != null
+            ? AppBar(
+                title: appBarTitle,
+                actions: appBarActions,
+                bottom: PreferredSize(
+                  preferredSize: const Size.fromHeight(1),
+                  child: Divider(
+                    height: 1,
+                    thickness: 1,
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
+                ),
+              )
+            : null;
 
         if (isCompact) {
           return Scaffold(
-            appBar: appBarTitle != null || appBarActions != null
-                ? AppBar(title: appBarTitle, actions: appBarActions)
-                : null,
+            appBar: appBar,
             body: Column(
               children: [
                 const RitmaSurfaceBadge(),
@@ -74,9 +88,7 @@ class RitmaResponsiveScaffold extends StatelessWidget {
         }
 
         return Scaffold(
-          appBar: appBarTitle != null || appBarActions != null
-              ? AppBar(title: appBarTitle, actions: appBarActions)
-              : null,
+          appBar: appBar,
           body: Column(
             children: [
               const RitmaSurfaceBadge(),
@@ -85,15 +97,47 @@ class RitmaResponsiveScaffold extends StatelessWidget {
                   children: [
                     NavigationRail(
                       extended: isExpanded,
+                      minExtendedWidth: 224,
                       selectedIndex: safeIndex,
                       onDestinationSelected: onSelectIndex,
-                      leading: railHeader != null
+                      leading: isExpanded
                           ? Padding(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: RitmaSpacing.sm,
                                 vertical: RitmaSpacing.sm,
                               ),
-                              child: railHeader,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: BoxDecoration(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                      const SizedBox(width: RitmaSpacing.xs),
+                                      Text(
+                                        'RITMA',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleMedium
+                                            ?.copyWith(letterSpacing: 1.5),
+                                      ),
+                                    ],
+                                  ),
+                                  if (railHeader != null) ...[
+                                    const SizedBox(height: RitmaSpacing.sm),
+                                    railHeader!,
+                                  ],
+                                ],
+                              ),
                             )
                           : null,
                       destinations: destinations

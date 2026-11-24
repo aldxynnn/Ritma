@@ -14,7 +14,17 @@ class SupabasePaymentRepository extends BaseRepository
 
   static const String _columns =
       'id, organization_id, branch_id, member_id, subscription_id, '
-      'amount_minor, currency_code, method, status, external_reference, paid_at';
+      'amount_minor, currency_code, method, status, external_reference, paid_at, '
+      'members(full_name)';
+
+  PaymentRecordModel _mapPayment(Map<dynamic, dynamic> raw) {
+    final map = Map<String, dynamic>.from(raw);
+    final memberRel = map.remove('members');
+    if (memberRel is Map && memberRel['full_name'] is String) {
+      map['member_display_name'] = memberRel['full_name'] as String;
+    }
+    return PaymentRecordModel.fromJson(map);
+  }
 
   @override
   Future<Result<List<PaymentRecordModel>>> fetchOrgPayments({
@@ -33,9 +43,7 @@ class SupabasePaymentRepository extends BaseRepository
       final rows = await builder
           .order('paid_at', ascending: false)
           .limit(limit);
-      return rows
-          .map((r) => PaymentRecordModel.fromJson(Map<String, dynamic>.from(r)))
-          .toList();
+      return rows.map(_mapPayment).toList();
     }, operation: 'fetchOrgPayments');
   }
 
@@ -53,9 +61,7 @@ class SupabasePaymentRepository extends BaseRepository
           .eq('member_id', memberId)
           .order('paid_at', ascending: false)
           .limit(limit);
-      return rows
-          .map((r) => PaymentRecordModel.fromJson(Map<String, dynamic>.from(r)))
-          .toList();
+      return rows.map(_mapPayment).toList();
     }, operation: 'fetchMemberPayments');
   }
 }
