@@ -15,16 +15,15 @@ Fitness operations involve real money, physical access control, and tight class 
 ### 2.2 Flutter Widget Tests (`test/features/*/presentation/`, `test/widget_test.dart`)
 - **Focus:** Critical UI flows, role-based shell switching (Member vs Operations), `AsyncStateView` states (loading, empty, error + retry, success), accessibility labels, dynamic text scaling (`MediaQuery.textScalerOf` at 1.5x–2.0x), and light/dark theme rendering without overflow.
 
-### 2.3 PostgreSQL & RLS Security Tests (`supabase/tests/` — introduced in Milestone 2)
-- **Focus:** Highest-leverage tests in the entire platform. Using `pgTAP` (or SQL transaction assertions run via Supabase CLI):
-  - **Tenant Isolation Tests:** Verify User in Org A receives 0 rows and `permission denied` on every table/RPC belonging to Org B.
-  - **Branch Isolation Tests:** Verify Branch Manager of Branch 1 cannot mutate schedules or check in members at Branch 2.
-  - **Entitlement Separation Tests:** Verify active Gym Membership allows QR check-in and fails Pilates class booking with `INSUFFICIENT_CREDITS`; verify Class Pack books Pilates and fails gym QR check-in with `NO_FACILITY_ENTITLEMENT`.
-  - **Concurrency & Idempotency Tests:**
-    - Concurrent bookings for the last remaining seat -> exactly 1 `confirmed`, 1 `waitlisted` (or `CAPACITY_EXCEEDED`), `confirmed_count <= capacity`.
-    - Duplicate `idempotency_key` replay -> single booking, single `-1` ledger entry.
-    - Double QR check-in within cooldown -> rejected with `DUPLICATE_COOLDOWN`.
-    - Repeated booking cancellation -> at most 1 `+cost` refund ledger entry.
+### 2.3 PostgreSQL & RLS Security Tests (`supabase/tests/`)
+- **Focus:** Highest-leverage tests in the entire platform, implemented as self-contained transactional SQL test suites (`01_rls_tenant_branch_isolation.sql`, `02_entitlement_and_ledger_integrity.sql`, `03_booking_concurrency_and_waitlist.sql`, `04_qr_checkin_and_security.sql`) that simulate Supabase JWT claims (`request.jwt.claims`, `role = authenticated`) and clean up via rollback/assertions:
+  - **Tenant & Composite FK Isolation Tests:** Verify User in Org A receives 0 rows and `permission denied` on Org B tables/RPCs, and cross-tenant FK inserts fail at PostgreSQL constraint layer (F1).
+  - **Branch & Role Hierarchy Isolation Tests:** Verify Branch Manager of Branch 1 cannot mutate schedules or check in at Branch 2, `org_admin` cannot assign/revoke `org_owner`, and last `org_owner` cannot be revoked (F3, F8).
+  - **Entitlement Separation & Multi-Grant Ledger Tests:** Verify active Gym Membership allows QR check-in and rejects Pilates booking with `INSUFFICIENT_CREDITS`; verify Class Pack books Pilates and fails gym QR check-in with `NO_FACILITY_ENTITLEMENT`; verify multi-grant (`credit_cost > 1`) FIFO consumption and per-grant early-cancel refund uniqueness (F5).
+  - **Concurrency, Capacity & Idempotency Tests:**
+    - Concurrent/back-to-back last-seat bookings -> `confirmed_count <= capacity`; `BEFORE UPDATE` trigger rejects shrinking capacity below `confirmed_count` (F9).
+    - Waitlist promotion skips members lacking unexpired credits (writing `audit_logs`) and enforces canonical lock order (F6).
+    - Duplicate `idempotency_key` replay -> single booking, single ledger consumption; double QR check-in within cooldown -> `DUPLICATE_COOLDOWN`; forged/expired/wrong-org QR token -> denied (`QR_INVALID_SIGNATURE`, `QR_TOKEN_EXPIRED`, `QR_ORG_MISMATCH`) (F7).
 
 ### 2.4 End-to-End Integration Tests (`integration_test/` — Milestone 5+)
 - **Focus:** Smoke coverage of critical user journeys against a dedicated local/staging Supabase instance:

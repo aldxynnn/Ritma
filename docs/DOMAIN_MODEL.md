@@ -35,21 +35,21 @@ A common failure in fitness software is conflating **membership**, **facility ac
 
 ### 2.2 Commercial Catalog & Entitlement Context
 - **Package (`packages`):** Commercial offering (`gym_membership`, `class_pack`, `pt_pack`, `hybrid`).
-- **Package Entitlement Rule (`package_entitlement_rules`):** Declarative rules describing what buying a package provisions:
-  - Facility access rule: duration days, branch access mode (`single_branch`, `selected_branches`, `all_branches`), allowed branch IDs.
-  - Class credit rule: credit quantity, expiry days, eligible class type IDs / branch IDs.
-  - PT credit rule: session quantity, expiry days, eligible branch IDs.
-- **Member Subscription (`member_subscriptions`):** Commercial contract instance (`pending`, `active`, `frozen`, `expired`, `cancelled`) with start/end timestamps and freeze history.
-- **Member Entitlement (`member_entitlements`):** Active operational right derived from a subscription (e.g., `facility_access` or `unlimited_class_access` with explicit branch/class scope and validity window).
+- **Package Entitlement Rule (`package_entitlement_rules`):** Declarative rules describing what buying a package provisions, backed by normalized join tables (`package_rule_branches`, `package_rule_class_types`):
+  - Facility access rule: duration days, branch access mode (`single_branch`, `selected_branches`, `all_branches`), allowed branches via `package_rule_branches`.
+  - Class credit rule: credit quantity, expiry days, class scope (`all_classes`, `selected_classes`) via `package_rule_class_types` and `package_rule_branches`.
+  - PT credit rule: session quantity, expiry days, eligible branches via `package_rule_branches`.
+- **Member Subscription (`member_subscriptions`):** Commercial contract instance (`pending`, `active`, `frozen`, `expired`, `cancelled`) with start/end timestamps and cumulative freeze duration tracking (`total_frozen_seconds`). Freezing a subscription atomically freezes its derived `member_entitlements`; unfreezing extends `ends_at` and `valid_until` by the exact frozen interval.
+- **Member Entitlement (`member_entitlements`):** Active operational right derived from a subscription (`facility_access` or `unlimited_class`), scoped via `member_entitlement_branches` and `member_entitlement_class_types`.
 
 ### 2.3 Credit Ledger Context
-- **Credit Grant (`credit_grants`):** Represents a specific bucket of credits issued to a member (source subscription/package, `credit_type` in `class_credit | pt_credit`, `initial_amount`, `remaining_amount`, `eligible_branch_ids`, `eligible_class_type_ids`, `expires_at`).
+- **Credit Grant (`credit_grants`):** Represents a specific bucket of credits issued to a member (source subscription/package, `credit_type` in `class_credit | pt_credit`, `initial_amount`, `remaining_amount`, `expires_at`), scoped via `credit_grant_branches` and `credit_grant_class_types`.
 - **Credit Ledger Entry (`credit_ledger_entries`):** Immutable audit log of every balance movement:
   - `entry_type`: `grant`, `consume`, `refund`, `expire`, `adjustment`
   - `delta`: signed integer (`+N` or `-N`)
-  - `grant_id`: references the exact `credit_grants` bucket consumed/refunded (enables strict FIFO expiration tracking)
+  - `grant_id`: references the exact `credit_grants` bucket consumed/refunded (enables strict FIFO expiration tracking across multi-grant bookings where `credit_cost > 1`)
   - `reference_type` / `reference_id`: links to `class_booking`, `pt_session`, `subscription`, or `manual_adjustment`
-  - `idempotency_key`: prevents duplicate credit deduction on retries
+  - `idempotency_key`: per-grant composite idempotency key (`<request_key>:<grant_id>`) preventing duplicate credit deduction across multi-grant transactions and retries
 
 *Design Note:* Maintaining both `credit_grants.remaining_amount` (updated exclusively inside locked RPC transactions alongside an immutable `credit_ledger_entries` insert) and an invariant check (`remaining_amount >= 0`) gives both O(1) locked consumption checks and full audit reconstructability.
 
@@ -73,13 +73,13 @@ A common failure in fitness software is conflating **membership**, **facility ac
 
 | Race / Failure Scenario | Failure Risk Without Controls | RITMA Backend Control |
 |---|---|---|
-| **Concurrent last-seat class bookings** | Two members read `confirmed_count = 9/10` simultaneously and both book (overbooking to 11/10) | `book_class_session` RPC acquires `SELECT ... FROM class_sessions WHERE id = $1 FOR UPDATE`, re-checks `confirmed_count < capacity`, and enforces `CHECK (confirmed_count <= capacity)` |
-| **Duplicate credit consumption on retry** | Mobile network drop causes client retry; member loses 2 credits for 1 booking | Unique `idempotency_key` on `class_bookings` and `credit_ledger_entries` + unique partial index on `(session_id, member_id) WHERE status IN ('confirmed', 'waitlisted')` |
-| **Double gym check-in on double-scan** | Receptionist scanner triggers twice in 1 second, inflating visit metrics | `validate_and_check_in` acquires advisory lock on `(member_id, branch_id)` and rejects scans within configurable cooldown (default 15 minutes) |
-| **Waitlist promotion race** | Two cancellations or concurrent booking + cancellation promote the same waitlisted member twice or promote out of order | Canonical lock ordering (`class_sessions` row lock acquired first) serializes all booking, cancellation, and promotion mutations for a session |
+| **Concurrent last-seat class bookings** | Two members read `confirmed_count = 9/10` simultaneously and both book (overbooking to 11/10) | `book_class_session` RPC acquires `SELECT ... FROM class_sessions WHERE id = $1 FOR UPDATE`, re-checks `confirmed_count < capacity`, and enforces `CHECK (confirmed_count <= capacity)` plus a `BEFORE UPDATE` trigger blocking capacity reductions below `confirmed_count` |
+| **Duplicate credit consumption on retry** | Mobile network drop causes client retry; member loses 2 credits for 1 booking | Unique `idempotency_key` on `class_bookings` and per-grant `idempotency_key` (`<key>:<grant_id>`) on `credit_ledger_entries` + unique partial index on `(session_id, member_id) WHERE status IN ('confirmed', 'waitlisted')` |
+| **Double gym check-in on double-scan** | Receptionist scanner triggers twice in 1 second, inflating visit metrics | `validate_and_check_in` acquires `pg_advisory_xact_lock` on `(member_id, branch_id)` and rejects scans within configurable cooldown (default 15 minutes) |
+| **Waitlist promotion race** | Two cancellations or concurrent booking + cancellation promote the same waitlisted member twice or promote out of order | Canonical lock ordering (`class_sessions` -> `class_bookings` -> `credit_grants ORDER BY id ASC`) serializes all mutations; members lacking credits are skipped with an audit entry, and auto-promotion is blocked after session start |
 | **Payment & package grant replay** | Payment webhook or staff double-tap grants package twice | `payment_records.idempotency_key` UNIQUE constraint; RPC returns existing result idempotently |
-| **Refund abuse / double refund** | Cancelling an already-cancelled booking triggers a second credit refund | State machine guard (`WHERE status = 'confirmed'`), plus partial unique index on `credit_ledger_entries(reference_id) WHERE entry_type = 'refund'` |
-| **Cross-branch privilege escalation** | Staff of Branch A submits `branch_id = Branch B` in RPC payload | Every RLS policy and RPC explicitly verifies `has_permission(auth.uid(), org_id, branch_id, 'permission.code')` server-side |
+| **Refund abuse / double refund** | Cancelling an already-cancelled booking triggers a second credit refund | State machine guard (`WHERE status = 'confirmed'`), plus partial unique index on `credit_ledger_entries(organization_id, reference_type, reference_id, grant_id) WHERE entry_type = 'refund'` |
+| **Cross-branch privilege escalation** | Staff of Branch A submits `branch_id = Branch B` in RPC payload | Every RLS policy and RPC explicitly verifies `authz.has_permission(org_id, branch_id, 'permission.code')` server-side using `(SELECT auth.uid())` |
 
 ---
 

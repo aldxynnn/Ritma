@@ -1,10 +1,11 @@
 # RITMA — Entity Relationship Diagram (ERD)
 
-This ERD reflects the normalized PostgreSQL schema spanning Multi-Tenant Identity, Membership & Entitlements, Credit Ledger, Facility Access, and Studio Booking.
+This ERD reflects the normalized PostgreSQL schema spanning Multi-Tenant Identity, Membership & Entitlements, Normalized Eligibility Join Tables, Credit Ledger, Facility Access, Studio Booking, and Post-MVP PT/Equipment/Notifications.
 
 ```mermaid
 erDiagram
     ORGANIZATIONS ||--o{ BRANCHES : "owns"
+    ORGANIZATIONS ||--|| ORGANIZATION_SIGNING_KEYS : "signs_qr_with"
     ORGANIZATIONS ||--o{ MEMBERS : "registers"
     ORGANIZATIONS ||--o{ PACKAGES : "offers"
     ORGANIZATIONS ||--o{ CLASS_TYPES : "defines"
@@ -26,6 +27,8 @@ erDiagram
     BRANCHES ||--o{ MEMBERS : "home_branch"
 
     PACKAGES ||--o{ PACKAGE_ENTITLEMENT_RULES : "provisions"
+    PACKAGE_ENTITLEMENT_RULES ||--o{ PACKAGE_RULE_BRANCHES : "scopes_branches"
+    PACKAGE_ENTITLEMENT_RULES ||--o{ PACKAGE_RULE_CLASS_TYPES : "scopes_classes"
     PACKAGES ||--o{ MEMBER_SUBSCRIPTIONS : "sold_as"
 
     MEMBERS ||--o{ MEMBER_SUBSCRIPTIONS : "subscribes"
@@ -34,7 +37,12 @@ erDiagram
     MEMBER_SUBSCRIPTIONS ||--o{ CREDIT_GRANTS : "issues"
 
     MEMBERS ||--o{ MEMBER_ENTITLEMENTS : "possesses"
+    MEMBER_ENTITLEMENTS ||--o{ MEMBER_ENTITLEMENT_BRANCHES : "covers_branches"
+    MEMBER_ENTITLEMENTS ||--o{ MEMBER_ENTITLEMENT_CLASS_TYPES : "covers_classes"
+
     MEMBERS ||--o{ CREDIT_GRANTS : "owns_buckets"
+    CREDIT_GRANTS ||--o{ CREDIT_GRANT_BRANCHES : "valid_at_branches"
+    CREDIT_GRANTS ||--o{ CREDIT_GRANT_CLASS_TYPES : "valid_for_classes"
     CREDIT_GRANTS ||--o{ CREDIT_LEDGER_ENTRIES : "tracked_by"
     MEMBERS ||--o{ CREDIT_LEDGER_ENTRIES : "accounted_in"
 
@@ -52,7 +60,8 @@ erDiagram
 
 ## Key Relationship Notes
 
-- **Multi-Role Isolation:** `USER_PROFILES` connects to `ORGANIZATIONS` and `BRANCHES` through `USER_ROLE_ASSIGNMENTS` (many-to-many with role & scope). A single user can be `org_owner` in Org A, `instructor` in Org B Branch 2, and a `member` in Org C.
-- **Entitlement Decoupling:** `MEMBER_SUBSCRIPTIONS` is the commercial record; it fans out into `MEMBER_ENTITLEMENTS` (for facility access or unlimited class rights) and/or `CREDIT_GRANTS` + `CREDIT_LEDGER_ENTRIES` (for countable class/PT credits).
-- **Access Integrity:** `FACILITY_VISITS` links directly to the exact `MEMBER_ENTITLEMENTS` row that authorized entry, guaranteeing post-hoc auditability even if a package definition changes later.
-- **Ledger Integrity:** `CLASS_BOOKINGS` references `CREDIT_LEDGER_ENTRIES` via `(reference_type = 'class_booking', reference_id = booking.id)`, linking every consumption and refund directly to its booking lifecycle.
+- **Composite Tenant Foreign Keys (F1):** Every tenant child relation carries composite FKs including `organization_id` (and `branch_id` where branch-bound, e.g., `ROOMS -> BRANCHES`, `CLASS_SESSIONS -> ROOMS`, `CLASS_BOOKINGS -> CLASS_SESSIONS`), preventing cross-tenant references in SQL.
+- **Normalized Scoping (F4):** `PACKAGE_ENTITLEMENT_RULES`, `MEMBER_ENTITLEMENTS`, and `CREDIT_GRANTS` resolve branch and class-type filters through normalized join tables (`*_BRANCHES`, `*_CLASS_TYPES`) with referential integrity instead of untyped UUID arrays.
+- **Per-Organization Secrets (F7):** `private.organization_signing_keys` isolates per-tenant QR HMAC keys outside the `public` API schema.
+- **Multi-Role Isolation:** `USER_PROFILES` connects to `ORGANIZATIONS` and `BRANCHES` through `USER_ROLE_ASSIGNMENTS`. A single user can be `org_owner` in Org A, `instructor` in Org B Branch 2, and a `member` in Org C.
+- **Entitlement Decoupling & Ledger Integrity:** `MEMBER_SUBSCRIPTIONS` materializes into `MEMBER_ENTITLEMENTS` and/or `CREDIT_GRANTS` + append-only `CREDIT_LEDGER_ENTRIES` supporting multi-grant FIFO consumption and per-grant refund tracking.

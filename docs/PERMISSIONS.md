@@ -65,14 +65,14 @@ Legend: **Org** = Org-wide scope | **Branch** = Assigned branch(es) only | **Ass
 | `entitlement.read` | Org | Org | Branch | Branch | — | — | Assigned clients | Self |
 | `entitlement.assign` | Org | Org | Branch | Branch | — | — | — | — |
 | `credit.adjust` | Org | Org | Branch (capped) | — | — | — | — | — |
-| `payment.read` | Org | Org | Branch | Branch (own shift) | — | — | — | Self |
+| `payment.read` | Org | Org | Branch | Branch | — | — | — | Self |
 | `payment.record` | Org | Org | Branch | Branch | — | — | — | — |
 | `payment.refund` | Org | Org | — | — | — | — | — | — |
 | `checkin.perform` | Org | Org | Branch | Branch | Branch | — | — | — |
 | `checkin.read` | Org | Org | Branch | Branch | Branch | — | — | Self |
 | `checkin.force_override` | Org | Org | Branch | — | — | — | — | — |
 | `schedule.manage` | Org | Org | Branch | — | — | — | — | — |
-| `booking.read` | Org | Org | Branch | Branch | — | Assigned | — | Self |
+| `booking.read` | Org | Org | Branch | Branch | — | Assigned (via `get_session_roster` RPC) | — | Self |
 | `booking.manage` | Org | Org | Branch | Branch | — | — | — | Self (book/cancel) |
 | `attendance.mark` | Org | Org | Branch | Branch | — | Assigned | — | — |
 | `dashboard.org.read` | Org | Org | — | — | — | — | — | — |
@@ -84,12 +84,18 @@ Legend: **Org** = Org-wide scope | **Branch** = Assigned branch(es) only | **Ass
 
 1. **Member Cross-Branch Access:**
    - Member identity (`members`) is organization-wide so a member never needs duplicate accounts across branches.
-   - Operational access is governed per entitlement/grant:
-     - `single_branch`: valid only when `target_branch_id = allowed_branch_ids[1]`.
-     - `selected_branches`: valid when `target_branch_id = ANY(allowed_branch_ids)`.
+   - Operational access is governed per entitlement/grant via normalized join tables (`member_entitlement_branches`, `credit_grant_branches`):
+     - `single_branch`: valid only when `target_branch_id` matches the assigned row in `*_branches`.
+     - `selected_branches`: valid when `EXISTS (SELECT 1 FROM *_branches b WHERE b.branch_id = target_branch_id)`.
      - `all_branches`: valid for any active branch belonging to `organization_id`.
-2. **Staff Cross-Branch Visibility:**
-   - A Receptionist at Branch A can look up a member whose `home_branch_id` is Branch B **if** that member belongs to the same `organization_id` and attempts to check in or book at Branch A.
-   - That Receptionist still CANNOT mutate Branch B schedules, check in members at Branch B, or read Branch B's financial/visit dashboards.
-3. **Privilege Escalation Prevention:**
-   - `role.assign` RPC enforces a strict hierarchy check: an `org_admin` cannot assign or revoke `org_owner`; a `branch_manager` can only assign branch-level staff/instructor roles within their own assigned branch; the last active `org_owner` of an organization cannot be revoked.
+2. **Staff Cross-Branch Visibility & Consent-Based Onboarding (C1, H2, M4, M5):**
+   - Raw `members`, `member_subscriptions`, `member_entitlements`, `credit_grants`, and `credit_ledger_entries` queries are branch-scoped to the member's `home_branch_id` (or `assigned_branch_id`).
+   - Receptionists/staff performing cross-branch check-in at Branch A for a member whose home branch is Branch B use `lookup_member_for_checkin` / `validate_and_check_in` RPCs, returning minimal check-in identity without exposing full org-wide PII or Branch B financials.
+   - Instructors access class rosters exclusively via `get_session_roster` RPC (exposing display name, member code, and attendance state only—no emails, phones, or billing info).
+   - Linking external user accounts as staff or claiming member profiles requires consent-based token acceptance (`invite_user_to_organization` -> `accept_organization_invitation`, `invite_member_claim` -> `claim_member_profile`); staff cannot directly overwrite `members.user_id` or `members.status`.
+3. **Privilege Escalation Prevention & Role Rank (F8):**
+   - `roles.rank` defines strict hierarchy: `org_owner (100) > org_admin (80) > branch_manager (60) > receptionist (40) > gym_staff / instructor / personal_trainer (30) > member (10)`.
+   - `invite_user_to_organization`, `assign_user_role`, and `revoke_user_role` (`SECURITY DEFINER`) verify:
+     - Caller has `role.assign` in scope (`NULL` branch for org-wide, matching `branch_id` for branch-scoped).
+     - `branch_manager` cannot assign org-wide roles (`branch_id IS NULL`) or roles on other branches, and manual `credit.adjust` is capped at 20 credits for ranks `< 80`.
+     - Caller cannot assign/invite/revoke any role with `rank >= caller_max_rank` unless caller is `org_owner` (rank 100), cannot pull external users into an org without invitation acceptance, and cannot revoke the last active `org_owner` (`LAST_ORG_OWNER`).
