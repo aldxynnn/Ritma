@@ -117,13 +117,21 @@ flutter test
 ## Verified Toolchain, Tests & Build Artifacts
 
 - **Formatting & Static Analysis:**
-  - `dart format --output=none --set-exit-if-changed lib test` (`153 files`, 0 changed)
+  - `dart format --output=none --set-exit-if-changed lib test` (`154 files`, 0 changed)
   - `flutter analyze --suppress-analytics` (`0 issues`)
-- **Automated Test Suite (`28/28` passing against non-production `DemoSandboxEngine` & widget harnesses):**
-  - Core env, failure mapping, `Result` / `BaseRepository`, auth/multi-role context switching, multi-branch & room setup, member directory/status, entitlement & ledger separation, end-to-end facility QR access/booking/waitlist/attendance/KPIs (`test/e2e_core_workflows_test.dart`), Wave 2 widget rendering (`test/features/wave2_views_test.dart`), and Wave 3 PT/Payments/Equipment/Notifications domains & widgets (`test/features/wave3_modules_test.dart`).
+- **Local PostgreSQL & SQL Security Tests (Docker Supabase Stack, Postgres 17):**
+  - Updated [supabase/config.toml](supabase/config.toml) for Supabase CLI v3.3.0 (`[local_smtp]`, `[auth.email] enabled = true`) and ignored `node_modules/` in [.gitignore](.gitignore).
+  - Executed `npx supabase start` and `npx supabase db reset`: all 5 migrations (`20261124000100`–`20261124000500`) + `supabase/seed.sql` applied cleanly.
+  - Executed `supabase/tests/01`–`04` directly inside `supabase_db_ritma` (`psql -v ON_ERROR_STOP=1`): all `4/4` passed (`02` updated to escape literal `%%` inside PL/pgSQL `RAISE EXCEPTION`).
+- **Supabase Cloud Schema Deployment (`ysgdtyexzmliidpiiarh`, Singapore `ap-southeast-1`):**
+  - Verified `npx supabase db push --remote --dry-run` and applied `npx supabase db push --remote --yes`.
+  - Confirmed via `npx supabase migration list --remote` that all 5 versions (`20261124000100`–`20261124000500`) are synchronized on Cloud without overwriting existing data or running `seed.sql` on Cloud.
+- **Automated Flutter Test Suite (`28 passed, 1 skipped` offline + `1/1` live integration):**
+  - Standard offline `flutter test --suppress-analytics`: `28` unit/widget/E2E tests passed (`DemoSandboxEngine` & widget harnesses); [supabase_backend_integration_test.dart](test/integration/supabase_backend_integration_test.dart) skips cleanly when run without `--dart-define`.
+  - Live real-backend run against local Supabase (`http://127.0.0.1:54321`): `1/1 passed` verifying `AppMode.supabase`, all `10` concrete `Supabase*Repository` implementations, and all `12` operational workflows against real GoTrue Auth, PostgREST, PostgreSQL RLS, and `SECURITY DEFINER` RPCs.
 - **Release Builds Verified on Windows 11 (Flutter 3.47.4 / Dart 3.13.3):**
   - Web release: `flutter build web --release --suppress-analytics` -> `build/web/index.html` (`1,544` bytes; Wasm dry run succeeded).
   - Android release APK: `flutter build apk --release --suppress-analytics` -> `build/app/outputs/flutter-apk/app-release.apk` (`59,036,590` bytes / `56.3 MB`).
   - iOS config verified: `ios/Runner.xcodeproj/project.pbxproj` defines `PRODUCT_BUNDLE_IDENTIFIER = com.ritma.ritma` and `IPHONEOS_DEPLOYMENT_TARGET = 15.0` (`.ipa` compilation requires macOS/Xcode).
-- **External / Environment Limitations (Recorded Honestly):**
-  - Local Docker Desktop is paused and `supabase` CLI is not installed on `PATH`; `env/dev.json` is not provisioned yet. SQL migrations (`000100`–`000500`) and SQL tests (`supabase/tests/01`–`04`) are statically security-audited (`claude-opus-5-5-high` & `gemini-4-hydrogen-xhigh`), not yet executed against a live local/remote Postgres instance. See [KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md).
+- **Safe Client Setup & Remaining Limits:**
+  - Populate git-ignored `env/dev.json` locally using `.\scripts\setup_dev_env.ps1` with only your Supabase Project URL and Publishable Key (`sb_publishable_...`) — `AppEnv.hasSupabaseConfig` explicitly rejects `sb_secret_` keys. Live Cloud app execution awaits those user-supplied client credentials in `env/dev.json`. See [KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md).

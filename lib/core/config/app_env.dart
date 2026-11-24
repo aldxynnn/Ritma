@@ -39,6 +39,9 @@ class AppEnv {
     const appName = String.fromEnvironment('APP_NAME', defaultValue: 'RITMA');
     const supabaseUrl = String.fromEnvironment('SUPABASE_URL');
     const supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+    const supabasePublishableKey = String.fromEnvironment(
+      'SUPABASE_PUBLISHABLE_KEY',
+    );
     const debugLogging = String.fromEnvironment(
       'ENABLE_DEBUG_LOGGING',
       defaultValue: 'true',
@@ -49,12 +52,15 @@ class AppEnv {
     );
 
     final environment = AppEnvironment.fromName(rawEnv);
+    final resolvedPublicKey = supabasePublishableKey.isNotEmpty
+        ? supabasePublishableKey
+        : supabaseAnonKey;
 
     return AppEnv(
       environment: environment,
       appName: appName,
       supabaseUrl: supabaseUrl,
-      supabaseAnonKey: supabaseAnonKey,
+      supabaseAnonKey: resolvedPublicKey,
       enableDebugLogging:
           environment != AppEnvironment.prod &&
           debugLogging.toLowerCase() == 'true',
@@ -76,5 +82,6 @@ class AppEnv {
       supabaseUrl.isNotEmpty &&
       supabaseAnonKey.isNotEmpty &&
       !supabaseUrl.contains('your-project-ref') &&
-      supabaseAnonKey != 'your-public-anon-key';
+      supabaseAnonKey != 'your-public-anon-key' &&
+      !supabaseAnonKey.startsWith('sb_secret_');
 }

@@ -138,7 +138,7 @@ BEGIN
   -- H4 check: adjust_member_credits wildcard safety (`%`) & exact idempotency replay
   v_adj_res := public.adjust_member_credits(v_org_id, v_member_pilates_id, 'class_credit', 2, 'Bonus credits', '%');
   IF (v_adj_res ->> 'idempotent_replay')::boolean IS NOT FALSE THEN
-    RAISE EXCEPTION 'Wildcard key % should not match unrelated rows';
+    RAISE EXCEPTION 'Wildcard key "%%" should not match unrelated rows';
   END IF;
   IF (public.adjust_member_credits(v_org_id, v_member_pilates_id, 'class_credit', 2, 'Bonus credits', '%') ->> 'idempotent_replay')::boolean IS NOT TRUE THEN
     RAISE EXCEPTION 'Exact replay of adjust_member_credits should return idempotent_replay=true';

@@ -6,6 +6,13 @@
 - Published initial checkpoint commit `6912f93` to `origin/main` (`https://github.com/aldxynnn/Ritma.git`).
 - Added `.gitattributes` for consistent cross-platform line endings.
 
+### Supabase Integration, Local Postgres Verification & Cloud Push
+- Updated `supabase/config.toml` (`[local_smtp]` & `[auth.email] enabled = true`) for Supabase CLI v3.3.0 and ignored `node_modules/` in `.gitignore`.
+- Started local Docker Supabase (`postgres:17`), executed `npx supabase db reset` (`20261124000100`–`20261124000500` + `seed.sql`), fixed PL/pgSQL `%` literal escaping (`%%`) in `supabase/tests/02_entitlement_and_ledger_integrity.sql`, and verified all 4 SQL test suites (`01`–`04`) passed.
+- Verified and pushed all 5 migrations cleanly to Supabase Cloud (`ysgdtyexzmliidpiiarh`, Singapore `ap-southeast-1`) via `npx supabase db push --remote --yes`.
+- Hardened `AppEnv` (`SUPABASE_PUBLISHABLE_KEY` fallback + `sb_secret_*` client-build guard), added `scripts/setup_dev_env.ps1`, and added `test/integration/supabase_backend_integration_test.dart` passing live (`1/1`) against local Supabase GoTrue, PostgREST, RLS, and RPCs.
+- Re-verified `dart format` (`154 files`), `flutter analyze` (`0 issues`), standard `flutter test` (`28 passed, 1 skipped` offline integration test), Web release (`build/web/index.html`, `1,544` bytes), and Android APK release (`56.3 MB`).
+
 ### Personal Training, Payments, Equipment & Notifications — Wave 3 (Phase 5) & Release Builds
 - Implemented `personal_training` slice (`PtSessionsView`, `book_pt_session`, `complete_pt_session`) with trainer availability checks, overlap prevention, `pt_credit`-only accounting, and `5-Session PT Pack` catalog support; wired as a toggle inside `OpsScheduleView` and `MemberBookingsView`.
 - Implemented `payments` slice (`PaymentsLedgerView`) reading `payment_records` cleanly across branches (for `payment.read` roles inside `OpsMembersView`) and member self-history (via `ProfileScreen` sheet).

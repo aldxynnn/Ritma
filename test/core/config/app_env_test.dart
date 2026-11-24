@@ -37,6 +37,16 @@ void main() {
       );
       expect(configured.hasSupabaseConfig, isTrue);
       expect(configured.isProduction, isTrue);
+
+      const secretRejected = AppEnv(
+        environment: AppEnvironment.dev,
+        appName: 'RITMA',
+        supabaseUrl: 'https://example.supabase.co',
+        supabaseAnonKey: 'sb_secret_forbidden',
+        enableDebugLogging: true,
+        enableDemoMode: false,
+      );
+      expect(secretRejected.hasSupabaseConfig, isFalse);
     });
   });
 

@@ -4,16 +4,15 @@
 
 ---
 
-## Active External / Environment Blockers
+## Active External / Environment Items
 
-1. **Docker Desktop Manually Paused & Supabase CLI Not Installed Globally**
-   - **Symptom:** Running `docker info` returns `Docker Desktop is manually paused. Unpause it through the Whale menu or Dashboard.`, and `supabase` CLI is not on `PATH`.
-   - **Impact:** Cannot spin up local Supabase PostgreSQL/Auth containers (`supabase start` / `supabase db reset`) or execute SQL tests in `supabase/tests/*.sql` against a live Supabase stack yet.
-   - **Mitigation:** All SQL migrations, RLS policies, RPC engines, and SQL assertion suites are written cleanly under `supabase/` and audited by an independent security reviewer (`claude-opus-5-5-high`). Flutter auth/shell layers support real Supabase via `--dart-define-from-file=env/dev.json` plus an explicitly badged `ENABLE_DEMO_MODE=true` non-production sandbox.
+1. **Cloud Client Credentials (`env/dev.json`) Pending Local Input**
+   - **Symptom:** Workspace contains tracked template `env/dev.example.json` and safe setup script `scripts/setup_dev_env.ps1`; git-ignored `env/dev.json` is not populated in the repo.
+   - **Impact:** Local Supabase (`http://127.0.0.1:54321`) end-to-end Flutter integration is verified (`1/1 passed`), and all 5 migrations are deployed on Cloud (`ysgdtyexzmliidpiiarh`). Executing the Flutter app or `test/integration/supabase_backend_integration_test.dart` directly against Cloud requires the user to run `.\scripts\setup_dev_env.ps1` with their Project URL and Publishable Key (`sb_publishable_...`).
 
-2. **No Live Supabase Project Credentials (`env/dev.json`) Configured**
-   - **Symptom:** Workspace contains tracked template `env/dev.example.json` only; git-ignored `env/dev.json` has not been populated with a Supabase URL and anon key.
-   - **Impact:** Live Supabase email/password sign-in and RPC calls cannot be exercised end-to-end against a remote project until dev credentials or unpaused local Docker Supabase are provided.
+2. **Automatic Notification Outbox Population Not Yet Wired to RPC Triggers**
+   - **Symptom:** `public.user_notifications` table, RLS policies (`user_notifications_select_own`, `user_notifications_update_own`), column guard trigger (`trg_user_notifications_guard`), and Flutter UI (`NotificationsBellButton`, `_NotificationsSheet`, `markNotificationRead`) are implemented and query real PostgREST cleanly, returning an empty list until notification rows are inserted server-side (e.g., via scheduled workers, Edge Functions, or future RPC hooks).
+   - **Impact:** Functional RLS/SELECT verified live; notification badge shows `0` for new accounts unless rows exist in `user_notifications`.
 
 3. **iOS Release Build Requires macOS / Xcode**
    - **Symptom:** Active development host runs Windows 11.
@@ -21,7 +20,9 @@
 
 ---
 
-## Tooling Notes (Windows Host)
+## Tooling Notes (Windows Host & Supabase CLI v3.3.0)
 
+- **Supabase CLI v3.3.0 `--remote` Target Behavior:** When a local Supabase Docker stack is running, `npx supabase migration list` and `npx supabase db push --dry-run` target the local stack by default; pass `--remote` explicitly to inspect or push to linked Cloud (`ysgdtyexzmliidpiiarh`).
+- **Docker Local Services (`supabase_imgproxy_ritma`, `supabase_pooler_ritma`):** `npx supabase status` notes those two optional containers stopped cleanly under the active config without impacting Auth, REST, Postgres 17 (`54322`), Mailpit (`54324`), or Studio (`54323`).
 - **PowerShell `flutter` shim stall:** Invoking bare `flutter --version` without `.bat` and `--suppress-analytics` can stall in non-interactive subshells. Always invoke `& "C:\src\flutter\bin\flutter.bat" <args> --suppress-analytics` and `& "C:\src\flutter\bin\dart.bat" <args>`.
 - **`psql` password prompt:** Always pass `-w` (`--no-password`) when scripting `psql` checks so non-interactive sessions never hang waiting for interactive password input.
