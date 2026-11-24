@@ -73,5 +73,8 @@ class AppEnv {
 
   bool get isProduction => environment == AppEnvironment.prod;
   bool get hasSupabaseConfig =>
-      supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
+      supabaseUrl.isNotEmpty &&
+      supabaseAnonKey.isNotEmpty &&
+      !supabaseUrl.contains('your-project-ref') &&
+      supabaseAnonKey != 'your-public-anon-key';
 }

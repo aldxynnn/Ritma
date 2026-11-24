@@ -42,10 +42,17 @@ RITMA/
 │   └── dev.example.json            # Compile-time environment template (--dart-define-from-file)
 ├── lib/
 │   ├── main.dart
-│   ├── app/                        # Composition root, bootstrap, GoRouter setup
-│   ├── core/                       # Config, errors (Freezed), logging, result, base repository, theme, shared widgets
+│   ├── app/                        # Composition root, bootstrap, reactive role-aware GoRouter
+│   ├── core/                       # Config, network, errors (Freezed), logging, result, base repository, Direction A theme, shared widgets
 │   └── features/
-│       └── foundation/             # Verified bootstrap shell (prior to Milestone 2 business slices)
+│       ├── auth/                   # Sign-in/up/recovery, profile, multi-role workspace switcher, invite/claim redemption
+│       ├── shells/                 # Role-isolated MemberShell (/member/*) and OpsShell (/ops/*)
+│       └── foundation/             # Initial bootstrap landing reference
+├── supabase/
+│   ├── config.toml                 # Supabase CLI config (private & authz excluded from API)
+│   ├── migrations/                 # Sequential PostgreSQL migrations (000100..000500)
+│   ├── seed.sql                    # Non-production local development seed
+│   └── tests/                      # RLS isolation, ledger immutability, concurrency & QR tests
 └── test/                           # Unit and widget tests
 ```
 
@@ -58,12 +65,18 @@ RITMA/
 - Android SDK / Xcode (for mobile targets) or Chrome (for Web)
 
 ### Environment Configuration
-Copy [env/dev.example.json](env/dev.example.json) to `env/dev.json` (git-ignored) and supply local/dev values when Milestone 2 activates Supabase:
+Copy [env/dev.example.json](env/dev.example.json) to `env/dev.json` (git-ignored) and supply local or remote Supabase values:
 
 ```bash
 flutter pub get
 dart run build_runner build
 flutter run --dart-define-from-file=env/dev.json
+```
+
+To preview the UI locally without live Supabase credentials (non-production builds only, clearly marked with a Demo Sandbox banner):
+
+```bash
+flutter run --dart-define=ENABLE_DEMO_MODE=true
 ```
 
 > **Security Note:** Never place `SUPABASE_SERVICE_ROLE_KEY` or private signing keys in `env/*.json` or commit `.env` files.

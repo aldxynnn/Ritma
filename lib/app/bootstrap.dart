@@ -7,10 +7,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/config/app_env.dart';
 import '../core/config/app_env_provider.dart';
 import '../core/logging/app_logger.dart';
+import '../core/network/supabase_provider.dart';
 import 'app.dart';
 
 /// Initializes core runtime infrastructure (logging, global error hooks,
-/// environment config) before mounting [RitmaApp].
+/// environment config, and optional Supabase client) before mounting [RitmaApp].
 Future<void> bootstrap({AppEnv? envOverride}) async {
   final env = envOverride ?? AppEnv.fromDartDefines();
   AppLogger.initialize(enableDebugLogging: env.enableDebugLogging);
@@ -27,6 +28,8 @@ Future<void> bootstrap({AppEnv? envOverride}) async {
     log.severe('Unhandled platform error', error, stack);
     return true;
   };
+
+  await initializeSupabaseIfConfigured(env);
 
   runZonedGuarded(
     () {

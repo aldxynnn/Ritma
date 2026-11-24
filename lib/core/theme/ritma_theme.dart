@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'ritma_colors.dart';
 import 'ritma_spacing.dart';
+import 'ritma_status_colors.dart';
 import 'ritma_typography.dart';
 
 /// Builds Material 3 [ThemeData] for RITMA light and dark modes with optional
@@ -35,7 +36,11 @@ abstract final class RitmaTheme {
       inversePrimary: RitmaColors.electricLime,
     );
 
-    return _buildTheme(colorScheme: colorScheme, density: density);
+    return _buildTheme(
+      colorScheme: colorScheme,
+      statusColors: RitmaStatusColors.light,
+      density: density,
+    );
   }
 
   static ThemeData dark({RitmaDensity density = RitmaDensity.member}) {
@@ -66,11 +71,16 @@ abstract final class RitmaTheme {
       inversePrimary: RitmaColors.graphite,
     );
 
-    return _buildTheme(colorScheme: colorScheme, density: density);
+    return _buildTheme(
+      colorScheme: colorScheme,
+      statusColors: RitmaStatusColors.dark,
+      density: density,
+    );
   }
 
   static ThemeData _buildTheme({
     required ColorScheme colorScheme,
+    required RitmaStatusColors statusColors,
     required RitmaDensity density,
   }) {
     final isOps = density == RitmaDensity.operations;
@@ -85,6 +95,7 @@ abstract final class RitmaTheme {
       scaffoldBackgroundColor: colorScheme.surface,
       visualDensity: visualDensity,
       textTheme: RitmaTypography.buildTextTheme(colorScheme),
+      extensions: <ThemeExtension<dynamic>>[statusColors],
       appBarTheme: AppBarTheme(
         backgroundColor: colorScheme.surface,
         foregroundColor: colorScheme.onSurface,
@@ -130,6 +141,55 @@ abstract final class RitmaTheme {
           ),
         ),
       ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          minimumSize: Size(64, isOps ? 44 : 48),
+          side: BorderSide(color: colorScheme.outline),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(RitmaRadius.md),
+          ),
+        ),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: colorScheme.surfaceContainerHighest,
+        indicatorColor: colorScheme.primaryContainer,
+        surfaceTintColor: Colors.transparent,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+      ),
+      navigationRailTheme: NavigationRailThemeData(
+        backgroundColor: colorScheme.surfaceContainerHighest,
+        indicatorColor: colorScheme.primaryContainer,
+        selectedIconTheme: IconThemeData(color: colorScheme.onPrimaryContainer),
+        unselectedIconTheme: IconThemeData(color: colorScheme.onSurfaceVariant),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: colorScheme.inverseSurface,
+        contentTextStyle: TextStyle(color: colorScheme.onInverseSurface),
+      ),
     );
+  }
+}
+
+/// Applies the appropriate [RitmaDensity] theme profile to a sub-tree (e.g.,
+/// Member lifestyle shell vs Operations high-density workspace shell).
+class RitmaDensityScope extends StatelessWidget {
+  const RitmaDensityScope({
+    required this.density,
+    required this.child,
+    super.key,
+  });
+
+  final RitmaDensity density;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+    final themed = brightness == Brightness.dark
+        ? RitmaTheme.dark(density: density)
+        : RitmaTheme.light(density: density);
+
+    return Theme(data: themed, child: child);
   }
 }
