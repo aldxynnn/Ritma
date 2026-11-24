@@ -1,6 +1,7 @@
 # RITMA — Presenter & Tester Demo Guide
 
 **Last Updated:** 2026-11-25  
+**Live Hosted Web Demo:** https://aldxynnn.github.io/Ritma/ (GitHub Pages HTTPS)  
 **Target Supabase Cloud Project:** `ritma` (`ysgdtyexzmliidpiiarh`, `ap-southeast-1`)
 
 ---
@@ -65,7 +66,11 @@ All five demo accounts share the dev/showcase password **`RitmaDemo2026!`** (and
 
 ---
 
-## 4. Build Artifacts & Local Run Commands
+## 4. Live Hosting, Build Artifacts & Run Commands
+
+### Instant Hosted Web App (No Local Setup Needed)
+- **Live URL:** **https://aldxynnn.github.io/Ritma/** (deployed free on GitHub Pages via orphan `gh-pages` branch built with `--base-href "/Ritma/"`, HTTPS enforced).
+- **Verified Multi-Role Interactive QA on Hosted Bundle:** All 5 demo accounts (`demo.owner@ritma.app`, `demo.manager@ritma.app`, `demo.member@ritma.app`, `demo.trainer1@ritma.app`, `demo.trainer2@ritma.app`) and live actions (Check-In/Check-Out, Class Roster, Member Entitlements, Branch Manager Senopati scoping, Member `Rotate QR`, `/ops/dashboard` route isolation guard, Class Booking + Cancel Credit Refund, and Personal Trainer scoping) passed with **0 HTTP >= 400 / 404** and **0 console errors**.
 
 ### Development Server (Live Cloud)
 ```powershell
@@ -74,12 +79,13 @@ All five demo accounts share the dev/showcase password **`RitmaDemo2026!`** (and
 
 ### Verified Release Artifacts (Compiled Against `env/dev.json`)
 - **Flutter Web Release Bundle:**
-  - Command: `& "C:\src\flutter\bin\flutter.bat" build web --release --dart-define-from-file=env/dev.json --suppress-analytics`
-  - Output directory: `build/web/` (`index.html` `2,236 bytes`, `main.dart.js` `3.34 MB`)
-  - Local static preview (e.g. from `build/web`): `npx --yes serve build/web -l 4173`
+  - Command (root `/`): `& "C:\src\flutter\bin\flutter.bat" build web --release --dart-define-from-file=env/dev.json --suppress-analytics`
+  - Command (GitHub Pages `/Ritma/`): `& "C:\src\flutter\bin\flutter.bat" build web --release --base-href "/Ritma/" --dart-define-from-file=env/dev.json --suppress-analytics`
+  - Local `build/web/` currently holds the `--base-href "/Ritma/"` bundle for GitHub Pages (`gh-pages`).
 - **Android Release APK:**
   - Command: `& "C:\src\flutter\bin\flutter.bat" build apk --release --dart-define-from-file=env/dev.json --suppress-analytics`
-  - Output file: `build/app/outputs/flutter-apk/app-release.apk` (`56.55 MB` / `59,299,750 bytes`, with `android.permission.INTERNET` verified in `AndroidManifest.xml`)
+  - Output file: `build/app/outputs/flutter-apk/app-release.apk` (`56.55 MB` / `59,299,750 bytes`, `com.ritma.ritma`, `minSdk 24`, `targetSdk 36`, `android.permission.INTERNET` granted)
+  - Verified live on `Pixel_9` Android emulator (`adb install -r` -> `Success`, cold launch `PID=3101`, `0` crashes, and live Cloud login into `Select Workspace` as `Nadia Kusuma`).
 
 ### Re-Seeding Demo Data (Idempotent)
 ```powershell
