@@ -6,6 +6,13 @@
 - Published initial checkpoint commit `6912f93` to `origin/main` (`https://github.com/aldxynnn/Ritma.git`).
 - Added `.gitattributes` for consistent cross-platform line endings.
 
+### Core Operations Vertical Slices — Wave 1 (Phase 5)
+- Added shared non-production `DemoSandboxEngine` mirroring the four separated PostgreSQL domain engines (`Entitlements`, `Facility Access`, `Booking`, `Credit Ledger`).
+- Implemented `organizations` slice: `CreateOrganizationSheet`, `OrgBranchManagementScreen` (Branches, Rooms, consent-based Staff Invitations via `invite_user_to_organization`), `SupabaseOrganizationRepository`, and `DemoSandboxOrganizationRepository`.
+- Implemented `members` slice: searchable/status-filterable `MembersDirectoryView`, member registration, `set_member_status`, claim-pass invitation, and member detail modal.
+- Implemented `packages` slice: `PackagesCatalogView`, `AssignPackageSheet` (idempotent assignment + payment method recording), and `MemberEntitlementsPanel` (strict separation of Facility Access vs Class/PT Credits, subscription freeze/unfreeze extension, and append-only Credit Ledger history).
+- Verified with `dart format` (98 files), `flutter analyze` (0 issues), and `23/23` automated tests.
+
 ### Auth, Multi-Role Context Switching & Dual Shells (Phase 4)
 - Integrated `supabase_flutter` (`SupabaseAuthRepository`, `AuthException` / `PostgrestException` / domain RPC error mapping in `ErrorMapper`, and `BackendSetupScreen` when unconfigured).
 - Added explicitly isolated, non-production `DemoSandboxAuthRepository` (`ENABLE_DEMO_MODE=true`) with persistent `DEMO SANDBOX MODE` UI banner.

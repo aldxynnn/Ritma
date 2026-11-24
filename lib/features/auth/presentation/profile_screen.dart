@@ -117,10 +117,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           ],
                         ),
                         const SizedBox(height: RitmaSpacing.md),
-                        OutlinedButton.icon(
-                          onPressed: () => context.go(AppRoutes.workspaces),
-                          icon: const Icon(Icons.swap_horiz),
-                          label: const Text('Switch Workspace or Role'),
+                        Wrap(
+                          spacing: RitmaSpacing.sm,
+                          runSpacing: RitmaSpacing.sm,
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: () => context.go(AppRoutes.workspaces),
+                              icon: const Icon(Icons.swap_horiz),
+                              label: const Text('Switch Workspace or Role'),
+                            ),
+                            if (workspace.hasPermission('branch.manage') ||
+                                workspace.hasPermission('role.assign'))
+                              FilledButton.icon(
+                                onPressed: () =>
+                                    context.push(AppRoutes.opsOrgSetup),
+                                icon: const Icon(
+                                  Icons.business_outlined,
+                                  size: 18,
+                                ),
+                                label: const Text('Branches, Rooms & Staff'),
+                              ),
+                          ],
                         ),
                       ],
                     ),

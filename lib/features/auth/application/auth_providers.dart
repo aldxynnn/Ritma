@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/config/app_env_provider.dart';
+import '../../../core/demo/demo_sandbox_engine.dart';
 import '../../../core/errors/app_failure.dart';
 import '../../../core/errors/error_mapper.dart';
 import '../../../core/network/supabase_provider.dart';
@@ -39,9 +40,8 @@ final authRepositoryProvider = Provider<AuthRepository?>((ref) {
       }
       return SupabaseAuthRepository(client);
     case AppMode.demoSandbox:
-      final repo = DemoSandboxAuthRepository();
-      ref.onDispose(repo.dispose);
-      return repo;
+      final engine = ref.watch(demoSandboxEngineProvider);
+      return DemoSandboxAuthRepository(engine);
     case AppMode.unconfigured:
       return null;
   }

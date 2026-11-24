@@ -20,6 +20,7 @@ abstract final class AppRoutes {
   static const String opsSchedule = '/ops/schedule';
   static const String opsMembers = '/ops/members';
   static const String opsSettings = '/ops/settings';
+  static const String opsOrgSetup = '/ops/settings/org-setup';
 
   /// Returns the highest-priority valid landing route for a selected
   /// [WorkspaceContext] so restricted roles (e.g., Instructor or Receptionist)
@@ -72,6 +73,10 @@ abstract final class AppRoutes {
       return workspace.hasPermission('member.read') ||
           workspace.hasPermission('entitlement.read') ||
           workspace.hasPermission('package.manage');
+    }
+    if (path.startsWith(opsOrgSetup)) {
+      return workspace.hasPermission('branch.manage') ||
+          workspace.hasPermission('role.assign');
     }
     return path.startsWith(opsSettings);
   }

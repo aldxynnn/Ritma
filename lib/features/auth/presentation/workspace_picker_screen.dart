@@ -8,6 +8,7 @@ import '../../../core/widgets/async_state_view.dart';
 import '../../../core/widgets/ritma_section_header.dart';
 import '../../../core/widgets/ritma_status_pill.dart';
 import '../../../core/widgets/ritma_surface_badge.dart';
+import '../../organizations/presentation/create_organization_sheet.dart';
 import '../application/auth_providers.dart';
 import '../domain/auth_session_state.dart';
 import '../domain/workspace_context.dart';
@@ -124,9 +125,30 @@ class _WorkspacePickerScreenState extends ConsumerState<WorkspacePickerScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Text(
-                            'Signed in as ${session.profile.fullName.isNotEmpty ? session.profile.fullName : session.user.email}',
-                            style: Theme.of(context).textTheme.bodyMedium,
+                          Wrap(
+                            alignment: WrapAlignment.spaceBetween,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: RitmaSpacing.sm,
+                            runSpacing: RitmaSpacing.xs,
+                            children: [
+                              Text(
+                                'Signed in as ${session.profile.fullName.isNotEmpty ? session.profile.fullName : session.user.email}',
+                                style: Theme.of(context).textTheme.bodyMedium,
+                              ),
+                              FilledButton.icon(
+                                onPressed: () => showModalBottomSheet<String>(
+                                  context: context,
+                                  isScrollControlled: true,
+                                  builder: (_) =>
+                                      const CreateOrganizationSheet(),
+                                ),
+                                icon: const Icon(
+                                  Icons.add_business_outlined,
+                                  size: 18,
+                                ),
+                                label: const Text('Create Organization'),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: RitmaSpacing.lg),
                           if (session.workspaces.isEmpty) ...[
@@ -143,14 +165,14 @@ class _WorkspacePickerScreenState extends ConsumerState<WorkspacePickerScreen> {
                                     ),
                                     const SizedBox(height: RitmaSpacing.sm),
                                     Text(
-                                      'Accept a Staff Invitation or Claim Your Member Pass',
+                                      'Create a Fitness Business or Join via Token',
                                       style: Theme.of(context)
                                           .textTheme
                                           .titleMedium,
                                     ),
                                     const SizedBox(height: RitmaSpacing.xs),
                                     Text(
-                                      'Organization creation & onboarding UI launches in Milestone 3 (RPC create_organization_with_owner is already provisioned in PostgreSQL). You can accept an invite or claim token below.',
+                                      'Create a new gym or studio organization above, or accept a staff invitation / member pass claim token below.',
                                       style: Theme.of(context)
                                           .textTheme
                                           .bodySmall,

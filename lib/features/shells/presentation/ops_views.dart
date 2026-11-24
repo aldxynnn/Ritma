@@ -6,6 +6,8 @@ import '../../../core/widgets/ritma_metric_tile.dart';
 import '../../../core/widgets/ritma_section_header.dart';
 import '../../../core/widgets/ritma_status_pill.dart';
 import '../../auth/application/auth_providers.dart';
+import '../../members/presentation/members_directory_view.dart';
+import '../../packages/presentation/packages_catalog_view.dart';
 
 class OpsDashboardView extends ConsumerWidget {
   const OpsDashboardView({super.key});
@@ -120,16 +122,68 @@ class OpsScheduleView extends StatelessWidget {
   }
 }
 
-class OpsMembersView extends StatelessWidget {
+class OpsMembersView extends ConsumerStatefulWidget {
   const OpsMembersView({super.key});
 
   @override
+  ConsumerState<OpsMembersView> createState() => _OpsMembersViewState();
+}
+
+class _OpsMembersViewState extends ConsumerState<OpsMembersView> {
+  int _tab = 0;
+
+  @override
   Widget build(BuildContext context) {
-    return const _OpsModulePlaceholder(
-      title: 'Members, Packages & Credit Ledger',
-      subtitle: 'Member profiles, entitlements, subscriptions, and credits',
-      icon: Icons.people_outline,
-      description: 'Backed by assign_package_to_member, freeze_member_subscription, and append-only credit_ledger_entries.',
+    final canMembers =
+        ref.watch(hasPermissionProvider('member.read')) ||
+        ref.watch(hasPermissionProvider('entitlement.read'));
+    final canPackages =
+        ref.watch(hasPermissionProvider('package.manage')) ||
+        ref.watch(hasPermissionProvider('entitlement.assign'));
+
+    if (!canMembers && canPackages) {
+      return const PackagesCatalogView();
+    }
+    if (canMembers && !canPackages) {
+      return const MembersDirectoryView();
+    }
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            RitmaSpacing.md,
+            RitmaSpacing.md,
+            RitmaSpacing.md,
+            0,
+          ),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: SegmentedButton<int>(
+              segments: const <ButtonSegment<int>>[
+                ButtonSegment<int>(
+                  value: 0,
+                  icon: Icon(Icons.people_outline),
+                  label: Text('Members'),
+                ),
+                ButtonSegment<int>(
+                  value: 1,
+                  icon: Icon(Icons.inventory_2_outlined),
+                  label: Text('Packages'),
+                ),
+              ],
+              selected: <int>{_tab},
+              onSelectionChanged: (values) =>
+                  setState(() => _tab = values.first),
+            ),
+          ),
+        ),
+        Expanded(
+          child: _tab == 0
+              ? const MembersDirectoryView()
+              : const PackagesCatalogView(),
+        ),
+      ],
     );
   }
 }

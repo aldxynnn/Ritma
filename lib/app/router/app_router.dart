@@ -11,6 +11,7 @@ import '../../features/auth/presentation/profile_screen.dart';
 import '../../features/auth/presentation/sign_in_screen.dart';
 import '../../features/auth/presentation/sign_up_screen.dart';
 import '../../features/auth/presentation/workspace_picker_screen.dart';
+import '../../features/organizations/presentation/org_branch_management_screen.dart';
 import '../../features/shells/presentation/member_shell.dart';
 import '../../features/shells/presentation/member_views.dart';
 import '../../features/shells/presentation/ops_shell.dart';
@@ -188,6 +189,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: AppRoutes.opsSettings,
                 builder: (context, state) => const ProfileScreen(),
+                routes: <RouteBase>[
+                  GoRoute(
+                    path: 'org-setup',
+                    builder: (context, state) =>
+                        const OrgBranchManagementScreen(),
+                  ),
+                ],
               ),
             ],
           ),
