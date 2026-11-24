@@ -7,6 +7,7 @@ import '../../../core/theme/ritma_spacing.dart';
 import '../../../core/widgets/ritma_status_pill.dart';
 import '../../../core/widgets/ritma_surface_badge.dart';
 import '../application/auth_providers.dart';
+import '../domain/auth_session_state.dart';
 
 class SignInScreen extends ConsumerStatefulWidget {
   const SignInScreen({super.key});
@@ -54,6 +55,15 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     result.when(
       success: (_) {
         setState(() => _submitting = false);
+        final session = ref.read(authControllerProvider).asData?.value;
+        if (session is AuthenticatedSession &&
+            GoRouterState.of(context).uri.path.startsWith('/auth')) {
+          final workspace = ref.read(activeWorkspaceProvider);
+          final target = workspace != null
+              ? AppRoutes.defaultRouteForWorkspace(workspace)
+              : AppRoutes.workspaces;
+          context.go(target);
+        }
       },
       failure: (failure) {
         setState(() {
@@ -150,6 +160,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                               TextFormField(
                                 controller: _emailController,
                                 keyboardType: TextInputType.emailAddress,
+                                textInputAction: TextInputAction.next,
                                 autofillHints: const [AutofillHints.email],
                                 decoration: const InputDecoration(
                                   labelText: 'Email',
@@ -167,7 +178,13 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                               TextFormField(
                                 controller: _passwordController,
                                 obscureText: _obscurePassword,
+                                textInputAction: TextInputAction.done,
                                 autofillHints: const [AutofillHints.password],
+                                onFieldSubmitted: (_) {
+                                  if (!_submitting) {
+                                    _submit();
+                                  }
+                                },
                                 decoration: InputDecoration(
                                   labelText: 'Password',
                                   prefixIcon: const Icon(Icons.lock_outline),
@@ -199,7 +216,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                                 child: TextButton(
                                   onPressed: _submitting
                                       ? null
-                                      : () => context.push(
+                                      : () => context.go(
                                           AppRoutes.forgotPassword,
                                         ),
                                   child: const Text('Forgot password?'),
@@ -222,7 +239,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                               OutlinedButton(
                                 onPressed: _submitting
                                     ? null
-                                    : () => context.push(AppRoutes.signUp),
+                                    : () => context.go(AppRoutes.signUp),
                                 child: const Text('Create Account'),
                               ),
                               if (mode == AppMode.demoSandbox) ...[

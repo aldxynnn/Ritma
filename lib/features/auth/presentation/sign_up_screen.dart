@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../app/router/app_routes.dart';
 import '../../../core/theme/ritma_spacing.dart';
+import '../../../core/theme/ritma_status_colors.dart';
 import '../../../core/widgets/ritma_surface_badge.dart';
 import '../application/auth_providers.dart';
+import '../domain/auth_session_state.dart';
 
 class SignUpScreen extends ConsumerStatefulWidget {
   const SignUpScreen({super.key});
@@ -20,7 +23,8 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   final _passwordController = TextEditingController();
 
   bool _submitting = false;
-  String? _errorMessage;
+  String? _statusMessage;
+  bool _isConfirmationNotice = false;
 
   @override
   void dispose() {
@@ -36,7 +40,8 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     }
     setState(() {
       _submitting = true;
-      _errorMessage = null;
+      _statusMessage = null;
+      _isConfirmationNotice = false;
     });
 
     final result = await ref
@@ -54,21 +59,52 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     result.when(
       success: (_) {
         setState(() => _submitting = false);
+        final session = ref.read(authControllerProvider).asData?.value;
+        if (session is AuthenticatedSession &&
+            GoRouterState.of(context).uri.path.startsWith('/auth')) {
+          final workspace = ref.read(activeWorkspaceProvider);
+          final target = workspace != null
+              ? AppRoutes.defaultRouteForWorkspace(workspace)
+              : AppRoutes.workspaces;
+          context.go(target);
+        }
       },
       failure: (failure) {
+        final lower = failure.message.toLowerCase();
+        final isConfirmNotice =
+            lower.contains('confirmation email') ||
+            lower.contains('verify your email');
         setState(() {
           _submitting = false;
-          _errorMessage = failure.message;
+          _statusMessage = failure.message;
+          _isConfirmationNotice = isConfirmNotice;
         });
       },
     );
   }
 
+  void _backToSignIn() {
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go(AppRoutes.signIn);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final statusColors = context.statusColors;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Create Account')),
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Back to Sign In',
+          onPressed: _backToSignIn,
+        ),
+        title: const Text('Create Account'),
+      ),
       body: SafeArea(
         child: Column(
           children: [
@@ -98,26 +134,32 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                                 style: theme.textTheme.bodySmall,
                               ),
                               const SizedBox(height: RitmaSpacing.lg),
-                              if (_errorMessage != null) ...[
+                              if (_statusMessage != null) ...[
                                 Container(
                                   padding: const EdgeInsets.all(
                                     RitmaSpacing.sm,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: theme.colorScheme.error.withValues(
-                                      alpha: 0.1,
-                                    ),
+                                    color: _isConfirmationNotice
+                                        ? statusColors.infoBg
+                                        : theme.colorScheme.error.withValues(
+                                            alpha: 0.1,
+                                          ),
                                     borderRadius: BorderRadius.circular(
                                       RitmaRadius.md,
                                     ),
                                     border: Border.all(
-                                      color: theme.colorScheme.error,
+                                      color: _isConfirmationNotice
+                                          ? statusColors.infoFg
+                                          : theme.colorScheme.error,
                                     ),
                                   ),
                                   child: Text(
-                                    _errorMessage!,
+                                    _statusMessage!,
                                     style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.error,
+                                      color: _isConfirmationNotice
+                                          ? statusColors.infoFg
+                                          : theme.colorScheme.error,
                                     ),
                                   ),
                                 ),
@@ -125,6 +167,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                               ],
                               TextFormField(
                                 controller: _nameController,
+                                textInputAction: TextInputAction.next,
                                 decoration: const InputDecoration(
                                   labelText: 'Full Name',
                                   prefixIcon: Icon(Icons.person_outline),
@@ -137,6 +180,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                               TextFormField(
                                 controller: _emailController,
                                 keyboardType: TextInputType.emailAddress,
+                                textInputAction: TextInputAction.next,
                                 decoration: const InputDecoration(
                                   labelText: 'Email',
                                   prefixIcon: Icon(Icons.mail_outline),
@@ -152,6 +196,12 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                               TextFormField(
                                 controller: _passwordController,
                                 obscureText: true,
+                                textInputAction: TextInputAction.done,
+                                onFieldSubmitted: (_) {
+                                  if (!_submitting) {
+                                    _submit();
+                                  }
+                                },
                                 decoration: const InputDecoration(
                                   labelText: 'Password (min 6 chars)',
                                   prefixIcon: Icon(Icons.lock_outline),
@@ -175,9 +225,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                               ),
                               const SizedBox(height: RitmaSpacing.xs),
                               TextButton(
-                                onPressed: _submitting
-                                    ? null
-                                    : () => context.pop(),
+                                onPressed: _submitting ? null : _backToSignIn,
                                 child: const Text('Back to Sign In'),
                               ),
                             ],

@@ -55,8 +55,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         return null;
       }
 
-      final session = authAsync.asData?.value;
       final isAuthRoute = path.startsWith('/auth');
+      if (authAsync.hasError && !authAsync.isLoading) {
+        return isAuthRoute ? null : AppRoutes.signIn;
+      }
+
+      final session = authAsync.asData?.value;
 
       if (session is! AuthenticatedSession) {
         return isAuthRoute ? null : AppRoutes.signIn;

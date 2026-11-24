@@ -4,6 +4,7 @@ import '../../../core/demo/demo_sandbox_engine.dart';
 import '../../../core/errors/error_mapper.dart';
 import '../../../core/network/supabase_provider.dart';
 import '../../auth/application/auth_providers.dart';
+import '../../auth/domain/auth_session_state.dart';
 import '../domain/operations_extras_models.dart';
 import '../domain/operations_extras_repository.dart';
 import '../infrastructure/demo_sandbox_operations_extras_repository.dart';
@@ -63,13 +64,16 @@ final maintenanceTicketsProvider =
 
 final userNotificationsProvider =
     FutureProvider.autoDispose<List<UserNotificationModel>>((ref) async {
+      final authSession = ref.watch(authControllerProvider).asData?.value;
       final workspace = ref.watch(activeWorkspaceProvider);
       final repo = ref.watch(operationsExtrasRepositoryProvider);
-      if (repo == null) {
+      if (authSession is! AuthenticatedSession ||
+          workspace == null ||
+          repo == null) {
         return const <UserNotificationModel>[];
       }
       final res = await repo.fetchNotifications(
-        orgId: workspace?.organizationId,
+        orgId: workspace.organizationId,
       );
       return res.when(
         success: (list) => list,
@@ -77,7 +81,7 @@ final userNotificationsProvider =
       );
     });
 
-final unreadNotificationCountProvider = Provider<int>((ref) {
+final unreadNotificationCountProvider = Provider.autoDispose<int>((ref) {
   final notifications =
       ref.watch(userNotificationsProvider).asData?.value ??
       const <UserNotificationModel>[];

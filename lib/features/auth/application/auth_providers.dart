@@ -6,6 +6,7 @@ import '../../../core/config/app_env_provider.dart';
 import '../../../core/demo/demo_sandbox_engine.dart';
 import '../../../core/errors/app_failure.dart';
 import '../../../core/errors/error_mapper.dart';
+import '../../../core/logging/app_logger.dart';
 import '../../../core/network/supabase_provider.dart';
 import '../../../core/result/result.dart';
 import '../domain/auth_repository.dart';
@@ -75,8 +76,11 @@ final hasPermissionProvider = Provider.family<bool, String>((ref, permission) {
 /// Coordinates authentication state, user profile loading, and multi-role
 /// workspace discovery.
 class AuthController extends AsyncNotifier<AuthSessionState> {
+  static final _log = AppLogger.named('auth_controller');
+
   StreamSubscription<AuthUser?>? _authSubscription;
   String? _loadingUserId;
+  Future<Result<void>>? _pendingLoad;
 
   @override
   Future<AuthSessionState> build() async {
@@ -89,10 +93,11 @@ class AuthController extends AsyncNotifier<AuthSessionState> {
     _authSubscription = repo.watchAuthChanges().listen((user) {
       if (user == null) {
         _loadingUserId = null;
-        ref.read(activeWorkspaceProvider.notifier).clear();
+        _pendingLoad = null;
         state = const AsyncData<AuthSessionState>(
           AuthSessionState.unauthenticated(),
         );
+        ref.read(activeWorkspaceProvider.notifier).clear();
       } else {
         final current = state.asData?.value;
         final alreadyLoaded =
@@ -132,10 +137,7 @@ class AuthController extends AsyncNotifier<AuthSessionState> {
 
     final result = await repo.signInWithEmail(email: email, password: password);
     return result.when(
-      success: (user) async {
-        await _loadAuthenticatedSession(repo, user);
-        return const Success<void>(null);
-      },
+      success: (user) => _loadAuthenticatedSession(repo, user),
       failure: Failure<void>.new,
     );
   }
@@ -158,10 +160,7 @@ class AuthController extends AsyncNotifier<AuthSessionState> {
       fullName: fullName,
     );
     return result.when(
-      success: (user) async {
-        await _loadAuthenticatedSession(repo, user);
-        return const Success<void>(null);
-      },
+      success: (user) => _loadAuthenticatedSession(repo, user),
       failure: Failure<void>.new,
     );
   }
@@ -184,10 +183,12 @@ class AuthController extends AsyncNotifier<AuthSessionState> {
     final result = await repo.signOut();
     return result.when(
       success: (_) {
-        ref.read(activeWorkspaceProvider.notifier).clear();
+        _loadingUserId = null;
+        _pendingLoad = null;
         state = const AsyncData<AuthSessionState>(
           AuthSessionState.unauthenticated(),
         );
+        ref.read(activeWorkspaceProvider.notifier).clear();
         return const Success<void>(null);
       },
       failure: Failure<void>.new,
@@ -263,17 +264,41 @@ class AuthController extends AsyncNotifier<AuthSessionState> {
     await _loadAuthenticatedSession(repo, current.user);
   }
 
-  Future<void> _loadAuthenticatedSession(
+  Future<Result<void>> _loadAuthenticatedSession(
+    AuthRepository repo,
+    AuthUser user,
+  ) {
+    if (_loadingUserId == user.id && _pendingLoad != null) {
+      return _pendingLoad!;
+    }
+    _loadingUserId = user.id;
+    state = const AsyncLoading<AuthSessionState>();
+    final loadFuture = _performSessionLoad(repo, user);
+    _pendingLoad = loadFuture;
+    return loadFuture;
+  }
+
+  Future<Result<void>> _performSessionLoad(
     AuthRepository repo,
     AuthUser user,
   ) async {
-    _loadingUserId = user.id;
-    state = const AsyncLoading<AuthSessionState>();
     try {
-      state = await AsyncValue.guard(() => _resolveSessionData(repo, user));
+      final session = await _resolveSessionData(repo, user);
+      state = AsyncData<AuthSessionState>(session);
+      return const Success<void>(null);
+    } catch (error, stackTrace) {
+      final failure = ErrorMapper.map(error, stackTrace);
+      _log.warning(
+        'Failed to resolve authenticated session for ${user.id}',
+        error,
+        stackTrace,
+      );
+      state = AsyncError<AuthSessionState>(failure, stackTrace);
+      return Failure<void>(failure);
     } finally {
       if (_loadingUserId == user.id) {
         _loadingUserId = null;
+        _pendingLoad = null;
       }
     }
   }

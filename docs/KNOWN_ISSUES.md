@@ -6,17 +6,21 @@
 
 ## Active External / Environment Items
 
-1. **Cloud Client Credentials (`env/dev.json`) Pending Local Input**
-   - **Symptom:** Workspace contains tracked template `env/dev.example.json` and safe setup script `scripts/setup_dev_env.ps1`; git-ignored `env/dev.json` is not populated in the repo.
-   - **Impact:** Local Supabase (`http://127.0.0.1:54321`) end-to-end Flutter integration is verified (`1/1 passed`), and all 5 migrations are deployed on Cloud (`ysgdtyexzmliidpiiarh`). Executing the Flutter app or `test/integration/supabase_backend_integration_test.dart` directly against Cloud requires the user to run `.\scripts\setup_dev_env.ps1` with their Project URL and Publishable Key (`sb_publishable_...`).
+1. **Dev/Demo Auth Email Confirmation Temporarily Disabled on Cloud (`ysgdtyexzmliidpiiarh`)**
+   - **Symptom:** `supabase/config.toml` sets `[auth.email] enable_confirmations = false` (pushed to Cloud `ysgdtyexzmliidpiiarh`) so newly registered dev/demo accounts receive an immediate session without inbox verification.
+   - **Action Before Production:** Must be restored to `enable_confirmations = true` (with a verified custom SMTP provider) via `npx supabase config push --remote` prior to staging/production release.
 
-2. **Automatic Notification Outbox Population Not Yet Wired to RPC Triggers**
+2. **Per-Developer `env/dev.json` Remains Git-Ignored**
+   - **Symptom:** Credentials (`SUPABASE_URL` + Publishable Key `sb_publishable_...`) live only in local git-ignored `env/dev.json` (generated via `.\scripts\setup_dev_env.ps1` from `env/dev.example.json`) and are never committed to Git.
+   - **Impact:** Fresh clones must populate `env/dev.json` before running `--dart-define-from-file=env/dev.json` against Cloud (`ysgdtyexzmliidpiiarh`) or local Docker (`http://127.0.0.1:54321`).
+
+3. **Automatic Notification Outbox Population Not Yet Wired to RPC Triggers**
    - **Symptom:** `public.user_notifications` table, RLS policies (`user_notifications_select_own`, `user_notifications_update_own`), column guard trigger (`trg_user_notifications_guard`), and Flutter UI (`NotificationsBellButton`, `_NotificationsSheet`, `markNotificationRead`) are implemented and query real PostgREST cleanly, returning an empty list until notification rows are inserted server-side (e.g., via scheduled workers, Edge Functions, or future RPC hooks).
-   - **Impact:** Functional RLS/SELECT verified live; notification badge shows `0` for new accounts unless rows exist in `user_notifications`.
+   - **Impact:** Functional RLS/SELECT verified live against Cloud (`HTTP 200`); notification badge shows `0` for new accounts unless rows exist in `user_notifications`.
 
-3. **iOS Release Build Requires macOS / Xcode**
+4. **iOS Release Build Requires macOS / Xcode**
    - **Symptom:** Active development host runs Windows 11.
-   - **Impact:** `flutter build web --release` (`build/web/index.html`) and `flutter build apk --release` (`app-release.apk`, `56.3 MB`) compiled cleanly on Windows, whereas iOS `.ipa` building/signing must run on macOS. `ios/Runner.xcodeproj/project.pbxproj` is verified with `PRODUCT_BUNDLE_IDENTIFIER = com.ritma.ritma` and `IPHONEOS_DEPLOYMENT_TARGET = 15.0`.
+   - **Impact:** `flutter build web --release` (`build/web/index.html`, `1,544` bytes) and `flutter build apk --release` (`app-release.apk`, `56.3 MB` verified earlier) compiled cleanly on Windows, whereas iOS `.ipa` building/signing must run on macOS. `ios/Runner.xcodeproj/project.pbxproj` is verified with `PRODUCT_BUNDLE_IDENTIFIER = com.ritma.ritma` and `IPHONEOS_DEPLOYMENT_TARGET = 15.0`.
 
 ---
 

@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -11,7 +10,8 @@ import '../core/network/supabase_provider.dart';
 import 'app.dart';
 
 /// Initializes core runtime infrastructure (logging, global error hooks,
-/// environment config, and optional Supabase client) before mounting [RitmaApp].
+/// environment config, and optional Supabase client) before mounting [RitmaApp]
+/// inside the same Zone to prevent Flutter Web binding zone mismatches.
 Future<void> bootstrap({AppEnv? envOverride}) async {
   final env = envOverride ?? AppEnv.fromDartDefines();
   AppLogger.initialize(enableDebugLogging: env.enableDebugLogging);
@@ -31,18 +31,11 @@ Future<void> bootstrap({AppEnv? envOverride}) async {
 
   await initializeSupabaseIfConfigured(env);
 
-  runZonedGuarded(
-    () {
-      log.info('Starting RITMA in ${env.environment.name} environment');
-      runApp(
-        ProviderScope(
-          overrides: [appEnvProvider.overrideWithValue(env)],
-          child: const RitmaApp(),
-        ),
-      );
-    },
-    (error, stack) {
-      log.severe('Unhandled zone error', error, stack);
-    },
+  log.info('Starting RITMA in ${env.environment.name} environment');
+  runApp(
+    ProviderScope(
+      overrides: [appEnvProvider.overrideWithValue(env)],
+      child: const RitmaApp(),
+    ),
   );
 }

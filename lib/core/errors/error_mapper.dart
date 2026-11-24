@@ -49,6 +49,14 @@ abstract final class ErrorMapper {
 
   static AppFailure _mapAuthException(AuthException error) {
     final lower = error.message.toLowerCase();
+    if (lower.contains('email not confirmed')) {
+      return const AppFailure.validation(
+        message: 'Your email address has not been confirmed yet. Check your inbox or verify your account before signing in.',
+      );
+    }
+    if (lower.contains('invalid login credentials')) {
+      return const AppFailure.validation(message: 'Invalid email or password.');
+    }
     if (error.statusCode == '401' ||
         lower.contains('jwt') ||
         lower.contains('session')) {
@@ -68,7 +76,9 @@ abstract final class ErrorMapper {
     if (msg.startsWith('UNAUTHORIZED:')) {
       return AppFailure.unauthorized(message: cleanMsg, cause: error);
     }
-    if (code == '42501' || msg.startsWith('FORBIDDEN:')) {
+    if (code == '42501' ||
+        msg.startsWith('FORBIDDEN:') ||
+        msg.toLowerCase().contains('permission denied')) {
       return AppFailure.forbidden(message: cleanMsg);
     }
     if (code == 'PGRST116' || code == 'P0002' || msg.startsWith('NOT_FOUND:')) {

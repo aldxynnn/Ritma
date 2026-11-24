@@ -44,10 +44,10 @@ class SupabaseAuthRepository extends BaseRepository implements AuthRepository {
         password: password,
       );
       final user = response.user;
-      if (user == null) {
+      if (user == null || response.session == null) {
         throw const AppException(
           AppFailure.unauthorized(
-            message: 'Unable to sign in with credentials.',
+            message: 'Unable to sign in. Verify your email and credentials.',
           ),
         );
       }

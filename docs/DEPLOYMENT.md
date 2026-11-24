@@ -40,8 +40,10 @@ Once Milestone 2 activates remote CI on `main` and pull requests, `.github/workf
 
 ## 4. Release & Migration Discipline
 
-### Database Migrations
-- All schema changes, RLS policies, indexes, and RPC functions are versioned as sequential SQL files under `supabase/migrations/`.
+### Database Migrations & Auth Configuration
+- All schema changes, table grants, RLS policies, indexes, and RPC functions are versioned as sequential SQL files under `supabase/migrations/`.
+- Managed Supabase Cloud requires explicit `GRANT SELECT/INSERT/UPDATE/DELETE ... TO authenticated` statements alongside RLS policies (enforced via `20261124000600_grant_authenticated_table_privileges.sql`).
+- **Production Auth Pre-Launch Requirement:** `supabase/config.toml` sets `[auth.email] enable_confirmations = false` strictly for temporary dev/demo onboarding testing (`ysgdtyexzmliidpiiarh`). Before production launch or staging sign-off, set `enable_confirmations = true`, push config via `npx supabase config push --remote`, and configure a production SMTP provider.
 - **Never** edit production schema manually through the Supabase Dashboard SQL editor without an accompanying versioned migration.
 - Prefer backward-compatible (expand-and-contract) migrations so existing mobile app versions do not crash during rollouts.
 

@@ -136,12 +136,25 @@ class _WorkspacePickerScreenState extends ConsumerState<WorkspacePickerScreen> {
                                 style: Theme.of(context).textTheme.bodyMedium,
                               ),
                               FilledButton.icon(
-                                onPressed: () => showModalBottomSheet<String>(
-                                  context: context,
-                                  isScrollControlled: true,
-                                  builder: (_) =>
-                                      const CreateOrganizationSheet(),
-                                ),
+                                onPressed: () async {
+                                  final orgId =
+                                      await showModalBottomSheet<String>(
+                                        context: context,
+                                        isScrollControlled: true,
+                                        builder: (_) =>
+                                            const CreateOrganizationSheet(),
+                                      );
+                                  if (orgId != null && context.mounted) {
+                                    final ws = ref.read(
+                                      activeWorkspaceProvider,
+                                    );
+                                    if (ws != null) {
+                                      context.go(
+                                        AppRoutes.defaultRouteForWorkspace(ws),
+                                      );
+                                    }
+                                  }
+                                },
                                 icon: const Icon(
                                   Icons.add_business_outlined,
                                   size: 18,

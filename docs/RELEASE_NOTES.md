@@ -2,6 +2,15 @@
 
 ## Unreleased (Cycle 1 — In Progress)
 
+### Cloud Web Auth Fix, Least-Privilege Grants & Live Cloud E2E Verification
+- Added forward-only migration `supabase/migrations/20261124000600_grant_authenticated_table_privileges.sql` granting explicit least-privilege `SELECT` / `INSERT` / `UPDATE` / `DELETE` table rights to `authenticated` (with zero `anon` privileges) across all 38 `public.*` tables so Cloud PostgREST matches local Docker behavior (`HTTP 403` resolved on `user_profiles` and `public.*` tables); verified locally (`npx supabase db reset` + `4/4` SQL tests) and pushed to Cloud (`ysgdtyexzmliidpiiarh`).
+- Removed mismatched `runZonedGuarded` wrapper around `runApp(...)` in `lib/app/bootstrap.dart` to eliminate Flutter Web `Zone mismatch` initialization assertions.
+- Fixed `AuthController` (`auth_providers.dart`) concurrent session-load deduplication (`_pendingLoad`), error propagation (`_loadAuthenticatedSession` returns `Result<void>`), unauthenticated state ordering on sign-out, `SupabaseAuthRepository.signInWithEmail` non-null session guard, and `ErrorMapper` (`email not confirmed`, `invalid login credentials`, and `permission denied` -> `ForbiddenFailure`).
+- Gated `userNotificationsProvider` on `AuthenticatedSession` + active workspace and made `unreadNotificationCountProvider` auto-disposable to eliminate transient `HTTP 401` queries during sign-out/sign-in transitions.
+- Updated `SignInScreen`, `SignUpScreen`, `ForgotPasswordScreen`, and `WorkspacePickerScreen` for clean Web URL reflection (`context.go`), Enter-key submit, fallback navigation guards, and calm confirmation-notice styling.
+- Temporarily set `[auth.email] enable_confirmations = false` in `supabase/config.toml` and pushed to Cloud dev/demo project (`ysgdtyexzmliidpiiarh`) for unblocked demo registration (explicitly flagged to revert to `true` before production launch).
+- Verified live Web E2E against Supabase Cloud (`Sign Up` -> `Select Workspace` -> `Create Organization` -> `Operations Console` -> `Reload` persistence -> `Sign Out` -> `Sign In` -> `Operations Console`) with `0` console errors and `0` HTTP `>= 400` responses, plus `dart format` (`154` files), `flutter analyze` (`0` issues), `flutter test` (`32 passed, 1 skipped` offline integration test), and `flutter build web --release` (`build/web/index.html`, `1,544` bytes).
+
 ### Foundation & GitHub Delivery
 - Published initial checkpoint commit `6912f93` to `origin/main` (`https://github.com/aldxynnn/Ritma.git`).
 - Added `.gitattributes` for consistent cross-platform line endings.
