@@ -39,6 +39,23 @@ final classSessionsProvider =
       );
     });
 
+final assignableInstructorsProvider = FutureProvider.autoDispose
+    .family<List<AssignableInstructor>, String?>((ref, branchId) async {
+      final workspace = ref.watch(activeWorkspaceProvider);
+      final repo = ref.watch(bookingRepositoryProvider);
+      if (workspace == null || repo == null) {
+        return const <AssignableInstructor>[];
+      }
+      final res = await repo.fetchAssignableInstructors(
+        orgId: workspace.organizationId,
+        branchId: branchId ?? workspace.branchId,
+      );
+      return res.when(
+        success: (list) => list,
+        failure: (failure) => throw AppException(failure),
+      );
+    });
+
 final memberBookingsProvider =
     FutureProvider.autoDispose<List<ClassBookingModel>>((ref) async {
       final workspace = ref.watch(activeWorkspaceProvider);

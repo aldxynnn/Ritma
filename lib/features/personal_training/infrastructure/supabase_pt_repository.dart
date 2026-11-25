@@ -66,34 +66,47 @@ class SupabasePtRepository extends BaseRepository implements PtRepository {
     String? memberId,
   }) {
     return guard(() async {
-      var builder = _client
-          .from('pt_sessions')
-          .select(
-            'id, organization_id, branch_id, trainer_id, member_id, '
-            'starts_at, ends_at, credit_cost, status, notes, '
-            'trainer_profiles(display_name), members(full_name)',
-          )
-          .eq('organization_id', orgId);
-      if (branchId != null) {
-        builder = builder.eq('branch_id', branchId);
+      final raw = await _client.rpc<dynamic>(
+        'get_pt_sessions_for_workspace',
+        params: <String, dynamic>{
+          'p_org_id': orgId,
+          'p_branch_id': branchId,
+          'p_member_id': memberId,
+        },
+      );
+      if (raw is! List<dynamic>) {
+        return const <PtSessionModel>[];
       }
-      if (memberId != null) {
-        builder = builder.eq('member_id', memberId);
-      }
-      final rows = await builder.order('starts_at', ascending: true);
-      return rows.map((r) {
-        final map = Map<String, dynamic>.from(r);
-        final trainerRel = map.remove('trainer_profiles');
-        if (trainerRel is Map && trainerRel['display_name'] is String) {
-          map['trainer_display_name'] = trainerRel['display_name'] as String;
-        }
-        final memberRel = map.remove('members');
-        if (memberRel is Map && memberRel['full_name'] is String) {
-          map['member_display_name'] = memberRel['full_name'] as String;
-        }
-        return PtSessionModel.fromJson(map);
-      }).toList();
+      return raw
+          .whereType<Map<dynamic, dynamic>>()
+          .map((r) => PtSessionModel.fromJson(Map<String, dynamic>.from(r)))
+          .toList();
     }, operation: 'fetchPtSessions');
+  }
+
+  @override
+  Future<Result<List<PtClientLookup>>> lookupMembersForPtBooking({
+    required String orgId,
+    required String branchId,
+    String query = '',
+  }) {
+    return guard(() async {
+      final raw = await _client.rpc<dynamic>(
+        'lookup_members_for_pt_booking',
+        params: <String, dynamic>{
+          'p_org_id': orgId,
+          'p_branch_id': branchId,
+          'p_query': query.trim(),
+        },
+      );
+      if (raw is! List<dynamic>) {
+        return const <PtClientLookup>[];
+      }
+      return raw
+          .whereType<Map<dynamic, dynamic>>()
+          .map((r) => PtClientLookup.fromJson(Map<String, dynamic>.from(r)))
+          .toList();
+    }, operation: 'lookupMembersForPtBooking');
   }
 
   @override
@@ -141,5 +154,24 @@ class SupabasePtRepository extends BaseRepository implements PtRepository {
         },
       );
     }, operation: 'completePtSession');
+  }
+
+  @override
+  Future<Result<PtCancelOutcome>> cancelPtSession({
+    required String orgId,
+    required String ptSessionId,
+    String? reason,
+  }) {
+    return guard(() async {
+      final raw = await _client.rpc<dynamic>(
+        'cancel_pt_session',
+        params: <String, dynamic>{
+          'p_org_id': orgId,
+          'p_pt_session_id': ptSessionId,
+          'p_reason': reason?.trim().isEmpty ?? true ? null : reason!.trim(),
+        },
+      );
+      return PtCancelOutcome.fromJson(Map<String, dynamic>.from(raw as Map));
+    }, operation: 'cancelPtSession');
   }
 }

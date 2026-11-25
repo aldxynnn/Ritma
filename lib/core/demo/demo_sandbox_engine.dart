@@ -11,13 +11,16 @@ import '../../features/auth/domain/user_profile.dart';
 import '../../features/auth/domain/workspace_context.dart';
 import '../../features/booking/domain/booking_models.dart';
 import '../../features/dashboard/domain/operational_metrics_model.dart';
+import '../../features/dashboard/domain/report_export_model.dart';
 import '../../features/facility_access/domain/facility_access_models.dart';
 import '../../features/members/domain/member_model.dart';
 import '../../features/operations_extras/domain/operations_extras_models.dart';
+import '../../features/organizations/domain/audit_log_model.dart';
 import '../../features/organizations/domain/branch_model.dart';
 import '../../features/organizations/domain/organization_invitation_result.dart';
 import '../../features/organizations/domain/organization_model.dart';
 import '../../features/organizations/domain/room_model.dart';
+import '../../features/organizations/domain/staff_management_models.dart';
 import '../../features/packages/domain/package_models.dart';
 import '../../features/payments/domain/payment_record_model.dart';
 import '../../features/personal_training/domain/pt_models.dart';
@@ -53,6 +56,7 @@ class DemoSandboxEngine {
   final Map<String, RoomModel> rooms = <String, RoomModel>{};
   final Map<String, _PendingStaffInvite> _staffInvites =
       <String, _PendingStaffInvite>{};
+  final List<_PendingStaffInvite> _staffInviteRecords = <_PendingStaffInvite>[];
 
   final Map<String, MemberModel> members = <String, MemberModel>{};
   final Map<String, _PendingMemberClaim> _memberClaims =
@@ -81,6 +85,10 @@ class DemoSandboxEngine {
   final Map<String, BookingActionOutcome> _bookingIdempotency =
       <String, BookingActionOutcome>{};
   final List<PaymentRecordModel> paymentRecords = <PaymentRecordModel>[];
+  final List<PaymentRefundModel> paymentRefunds = <PaymentRefundModel>[];
+  final Map<String, RefundOutcome> _refundIdempotency =
+      <String, RefundOutcome>{};
+  final List<AuditLogModel> auditLogs = <AuditLogModel>[];
   final Map<String, TrainerProfileModel> trainerProfiles =
       <String, TrainerProfileModel>{};
   final List<TrainerAvailabilityModel> trainerAvailabilities =
@@ -342,11 +350,20 @@ class DemoSandboxEngine {
 
     workspacesByUser[emptyUser.id] = <WorkspaceContext>[];
 
-    _staffInvites['DEMO-STAFF-INVITE'] = const _PendingStaffInvite(
+    final now = DateTime.now().toUtc();
+    final demoStaffInvite = _PendingStaffInvite(
+      invitationId: 'demo-staff-inv-1',
+      token: 'DEMO-STAFF-INVITE',
+      invitedEmail: 'new@ritma.demo',
       organizationId: seedOrgId,
       branchId: seedBranchDowntownId,
       role: RitmaRole.branchManager,
+      createdAt: now,
+      expiresAt: now.add(const Duration(days: 7)),
+      status: 'pending',
     );
+    _staffInvites['DEMO-STAFF-INVITE'] = demoStaffInvite;
+    _staffInviteRecords.add(demoStaffInvite);
     _memberClaims['DEMO-MEMBER-CLAIM'] = const _PendingMemberClaim(
       organizationId: seedOrgId,
       memberId: member2Id,
@@ -354,7 +371,6 @@ class DemoSandboxEngine {
 
     _orgSigningSecrets[seedOrgId] = _uuid.v4();
 
-    final now = DateTime.now().toUtc();
     const s1Id = '77777777-7777-7777-7777-777777777701';
     const s2Id = '77777777-7777-7777-7777-777777777702';
 
@@ -622,6 +638,83 @@ class DemoSandboxEngine {
     return user;
   }
 
+  List<WorkspaceContext> _staffWorkspacesFor(String userId, String orgId) {
+    return (workspacesByUser[userId] ?? const <WorkspaceContext>[])
+        .where((w) => w.organizationId == orgId && w.roleCode != 'member')
+        .toList();
+  }
+
+  bool _hasOrgPermission(String orgId, String permission, {String? branchId}) {
+    final userId = requireCurrentUser().id;
+    final list = _staffWorkspacesFor(userId, orgId);
+    for (final ws in list) {
+      if (!ws.hasPermission(permission)) continue;
+      if (branchId == null) {
+        if (ws.branchId == null) return true;
+      } else {
+        if (ws.branchId == null || ws.branchId == branchId) return true;
+      }
+    }
+    return false;
+  }
+
+  String _emailForUser(String userId) {
+    for (final entry in usersByEmail.entries) {
+      if (entry.value.id == userId) return entry.key;
+    }
+    return '';
+  }
+
+  int _highestRankForUser(String userId, String orgId) {
+    final list = _staffWorkspacesFor(userId, orgId);
+    var maxRank = 0;
+    for (final w in list) {
+      if (w.roleRank > maxRank) maxRank = w.roleRank;
+    }
+    return maxRank;
+  }
+
+  void _requirePermission(
+    String orgId,
+    String permission, {
+    String? branchId,
+    String? message,
+  }) {
+    requireCurrentUser();
+    if (!_hasOrgPermission(orgId, permission, branchId: branchId)) {
+      throw AppException(
+        AppFailure.forbidden(
+          message: message ?? 'Missing $permission permission.',
+        ),
+      );
+    }
+  }
+
+  void _recordAudit(
+    String orgId,
+    String? branchId,
+    String actorUserId,
+    String action,
+    String targetType,
+    String? targetId, [
+    Map<String, dynamic> metadata = const <String, dynamic>{},
+  ]) {
+    auditLogs.insert(
+      0,
+      AuditLogModel(
+        id: _uuid.v4(),
+        organizationId: orgId,
+        branchId: branchId,
+        actorUserId: actorUserId,
+        action: action,
+        targetType: targetType,
+        targetId: targetId,
+        metadata: metadata,
+        createdAt: DateTime.now().toUtc(),
+      ),
+    );
+  }
+
   String createOrganizationWithOwner({
     required String name,
     required String slug,
@@ -739,14 +832,39 @@ class DemoSandboxEngine {
     required String roleCode,
     String? branchId,
   }) {
-    requireCurrentUser();
+    final user = requireCurrentUser();
     final role = RitmaRole.fromCode(roleCode);
+    _requirePermission(orgId, 'role.assign', branchId: branchId);
+    if (_highestRankForUser(user.id, orgId) < role.rank) {
+      throw const AppException(
+        AppFailure.forbidden(
+          message: 'Cannot invite a role higher than your own rank.',
+        ),
+      );
+    }
     final token = 'INV-${_uuid.v4().substring(0, 8).toUpperCase()}';
     final invId = _uuid.v4();
-    _staffInvites[token] = _PendingStaffInvite(
+    final now = DateTime.now().toUtc();
+    final rec = _PendingStaffInvite(
+      invitationId: invId,
+      token: token,
+      invitedEmail: email.trim().toLowerCase(),
       organizationId: orgId,
       branchId: branchId,
       role: role,
+      createdAt: now,
+      expiresAt: now.add(const Duration(days: 7)),
+      status: 'pending',
+    );
+    _staffInvites[token] = rec;
+    _staffInviteRecords.add(rec);
+    _recordAudit(
+      orgId,
+      branchId,
+      user.id,
+      'staff.invited',
+      'invitation',
+      invId,
     );
     return OrganizationInvitationResult(
       invitationId: invId,
@@ -760,13 +878,19 @@ class DemoSandboxEngine {
   void acceptInvitation(String token) {
     final user = requireCurrentUser();
     final invite = _staffInvites.remove(token.trim());
-    if (invite == null) {
+    if (invite == null || invite.status != 'pending') {
       throw const AppException(
         AppFailure.validation(
           message:
               'Invalid or expired invitation token (try DEMO-STAFF-INVITE).',
         ),
       );
+    }
+    final recIdx = _staffInviteRecords.indexWhere(
+      (r) => r.invitationId == invite.invitationId,
+    );
+    if (recIdx >= 0) {
+      _staffInviteRecords[recIdx] = invite.copyWith(status: 'accepted');
     }
     final org = organizations[invite.organizationId];
     final branch = invite.branchId != null ? branches[invite.branchId] : null;
@@ -782,6 +906,14 @@ class DemoSandboxEngine {
       list.add(candidate);
     }
     workspacesByUser[user.id] = list;
+    _recordAudit(
+      invite.organizationId,
+      invite.branchId,
+      user.id,
+      'staff.invitation_accepted',
+      'invitation',
+      invite.invitationId,
+    );
   }
 
   String inviteMemberClaim({
@@ -897,6 +1029,16 @@ class DemoSandboxEngine {
     required List<CreatePackageRuleInput> rules,
   }) {
     requireCurrentUser();
+    for (final r in rules) {
+      if (r.branchAccessScope == BranchAccessScope.selectedBranches &&
+          r.allowedBranchIds.isEmpty) {
+        throw const AppException(
+          AppFailure.validation(
+            message: 'Select at least one branch for selected-branch access.',
+          ),
+        );
+      }
+    }
     final pkgId = _uuid.v4();
     final materializedRules = rules
         .map(
@@ -929,6 +1071,74 @@ class DemoSandboxEngine {
     return pkg;
   }
 
+  void updatePackageDetails({
+    required String orgId,
+    required String packageId,
+    required String name,
+    String description = '',
+    int? priceMinor,
+    required bool isActive,
+    BranchAccessScope? branchAccessScope,
+    List<String>? allowedBranchIds,
+  }) {
+    final user = requireCurrentUser();
+    _requirePermission(orgId, 'package.manage');
+    final existing = packages[packageId];
+    if (existing == null || existing.organizationId != orgId) {
+      throw const AppException(
+        AppFailure.notFound(message: 'Package not found.'),
+      );
+    }
+    if (name.trim().isEmpty) {
+      throw const AppException(
+        AppFailure.validation(message: 'Package name cannot be empty.'),
+      );
+    }
+    if (priceMinor != null && priceMinor < 0) {
+      throw const AppException(
+        AppFailure.validation(message: 'Package price cannot be negative.'),
+      );
+    }
+    if (branchAccessScope == BranchAccessScope.selectedBranches &&
+        (allowedBranchIds == null || allowedBranchIds.isEmpty)) {
+      throw const AppException(
+        AppFailure.validation(
+          message: 'Select at least one branch for selected-branch access.',
+        ),
+      );
+    }
+
+    final updatedRules = existing.rules.map((r) {
+      final scope = branchAccessScope ?? r.branchAccessScope;
+      final branchesForRule = switch (scope) {
+        BranchAccessScope.selectedBranches =>
+          allowedBranchIds ?? r.allowedBranchIds,
+        _ => const <String>[],
+      };
+      return r.copyWith(
+        branchAccessScope: scope,
+        allowedBranchIds: branchesForRule,
+      );
+    }).toList();
+
+    packages[packageId] = existing.copyWith(
+      name: name.trim(),
+      description: description.trim(),
+      priceMinor: priceMinor ?? existing.priceMinor,
+      isActive: isActive,
+      rules: updatedRules,
+    );
+    _recordAudit(
+      orgId,
+      null,
+      user.id,
+      'package.updated',
+      'package',
+      packageId,
+      <String, dynamic>{'is_active': isActive},
+    );
+  }
+
   String assignPackageToMember({
     required String orgId,
     required String branchId,
@@ -952,10 +1162,21 @@ class DemoSandboxEngine {
         AppFailure.notFound(message: 'Member not found.'),
       );
     }
-    if (pkg == null || pkg.organizationId != orgId) {
+    if (pkg == null || pkg.organizationId != orgId || !pkg.isActive) {
       throw const AppException(
-        AppFailure.notFound(message: 'Package not found.'),
+        AppFailure.notFound(message: 'Active package not found.'),
       );
+    }
+    for (final rule in pkg.rules) {
+      if (rule.branchAccessScope == BranchAccessScope.selectedBranches &&
+          rule.allowedBranchIds.isEmpty) {
+        throw const AppException(
+          AppFailure.validation(
+            message:
+                'Selected-branches package has no configured branch rules.',
+          ),
+        );
+      }
     }
 
     final start = startsAt ?? DateTime.now().toUtc();
@@ -1776,6 +1997,98 @@ class DemoSandboxEngine {
     return session;
   }
 
+  List<AssignableInstructor> fetchAssignableInstructors({
+    required String orgId,
+    String? branchId,
+  }) {
+    requireCurrentUser();
+    final results = <String, AssignableInstructor>{};
+    for (final entry in workspacesByUser.entries) {
+      final userId = entry.key;
+      final profile = profiles[userId];
+      for (final ws in entry.value) {
+        if (ws.organizationId != orgId || ws.roleCode == 'member') continue;
+        if (!const {
+          'instructor',
+          'personal_trainer',
+          'branch_manager',
+          'org_admin',
+          'org_owner',
+        }.contains(ws.roleCode)) {
+          continue;
+        }
+        if (branchId != null &&
+            ws.branchId != null &&
+            ws.branchId != branchId) {
+          continue;
+        }
+        final current = results[userId];
+        if (current == null ||
+            _roleRankFor(ws.roleCode) > _roleRankFor(current.roleCode)) {
+          results[userId] = AssignableInstructor(
+            userId: userId,
+            displayName: profile?.fullName ?? 'Staff',
+            roleCode: ws.roleCode,
+            roleDisplayName: ws.roleDisplayName,
+          );
+        }
+      }
+    }
+    return results.values.toList()
+      ..sort((a, b) => a.displayName.compareTo(b.displayName));
+  }
+
+  int _roleRankFor(String code) => RitmaRole.fromCode(code).rank;
+
+  ClassSessionModel updateClassSession({
+    required String orgId,
+    required String sessionId,
+    required String roomId,
+    required String classTypeId,
+    required String title,
+    required DateTime startsAt,
+    required DateTime endsAt,
+    required int capacity,
+    required int creditCost,
+    required DateTime cancellationCutoffAt,
+    required bool waitlistEnabled,
+    String? instructorUserId,
+    required String instructorDisplayName,
+  }) {
+    final existing = classSessions[sessionId];
+    if (existing == null || existing.organizationId != orgId) {
+      throw const AppException(
+        AppFailure.notFound(message: 'Class session not found.'),
+      );
+    }
+    _requirePermission(orgId, 'schedule.manage', branchId: existing.branchId);
+    if (!endsAt.isAfter(startsAt) ||
+        cancellationCutoffAt.isAfter(startsAt) ||
+        capacity < existing.confirmedCount ||
+        capacity <= 0) {
+      throw const AppException(
+        AppFailure.validation(
+          message: 'Invalid class session times or capacity below confirmed bookings.',
+        ),
+      );
+    }
+    final updated = existing.copyWith(
+      roomId: roomId,
+      classTypeId: classTypeId,
+      instructorUserId: instructorUserId,
+      instructorDisplayName: instructorDisplayName.trim(),
+      title: title.trim(),
+      startsAt: startsAt,
+      endsAt: endsAt,
+      capacity: capacity,
+      creditCost: creditCost,
+      cancellationCutoffAt: cancellationCutoffAt,
+      waitlistEnabled: waitlistEnabled,
+    );
+    classSessions[sessionId] = updated;
+    return updated;
+  }
+
   BookingActionOutcome bookClassSession({
     required String orgId,
     required String sessionId,
@@ -2332,10 +2645,11 @@ class DemoSandboxEngine {
           (p) =>
               p.organizationId == orgId &&
               (branchId == null || p.branchId == branchId) &&
-              p.status == PaymentStatus.paid &&
+              (p.status == PaymentStatus.paid ||
+                  p.status == PaymentStatus.refunded) &&
               !p.paidAt.isBefore(windowStart),
         )
-        .fold<int>(0, (sum, p) => sum + p.amountMinor);
+        .fold<int>(0, (sum, p) => sum + p.netAmountMinor);
 
     var capTotal = 0;
     var confTotal = 0;
@@ -2390,7 +2704,7 @@ class DemoSandboxEngine {
     int? creditCost,
     required String idempotencyKey,
   }) {
-    requireCurrentUser();
+    final user = requireCurrentUser();
     final scopedKey = 'pt:$orgId:$idempotencyKey';
     final replay = _ptIdempotency[scopedKey];
     if (replay != null) {
@@ -2413,6 +2727,22 @@ class DemoSandboxEngine {
       );
     }
     final member = members[memberId];
+    final isSelf = member != null && member.userId == user.id;
+    final isOpsMgr =
+        _hasOrgPermission(orgId, 'schedule.manage', branchId: branchId) ||
+        _hasOrgPermission(orgId, 'booking.manage', branchId: branchId);
+    final isOwningTrainer =
+        _hasOrgPermission(orgId, 'pt.manage', branchId: branchId) &&
+        trainer.userId == user.id;
+    if (!isSelf && !isOpsMgr && !isOwningTrainer) {
+      throw AppException(
+        AppFailure.forbidden(
+          message: _hasOrgPermission(orgId, 'pt.manage', branchId: branchId)
+              ? 'Personal trainers can only book sessions for themselves.'
+              : 'Not authorized to book PT session.',
+        ),
+      );
+    }
     if (member == null ||
         member.organizationId != orgId ||
         member.status != MemberStatus.active) {
@@ -2533,6 +2863,7 @@ class DemoSandboxEngine {
       organizationId: orgId,
       branchId: trainer.homeBranchId,
       trainerId: trainerId,
+      trainerUserId: trainer.userId,
       memberId: memberId,
       startsAt: startsAt.toUtc(),
       endsAt: endsAt.toUtc(),
@@ -2540,6 +2871,7 @@ class DemoSandboxEngine {
       status: PtSessionStatus.scheduled,
       trainerDisplayName: trainer.displayName,
       memberDisplayName: member.fullName,
+      memberCode: member.memberCode,
     );
 
     final outcome = PtBookingOutcome(
@@ -2640,11 +2972,27 @@ class DemoSandboxEngine {
     required String ptSessionId,
     String? notes,
   }) {
-    requireCurrentUser();
+    final user = requireCurrentUser();
     final pt = ptSessions[ptSessionId];
     if (pt == null || pt.organizationId != orgId) {
       throw const AppException(
         AppFailure.notFound(message: 'PT session not found.'),
+      );
+    }
+    final trainer = trainerProfiles[pt.trainerId];
+    final canManageSchedule = _hasOrgPermission(
+      orgId,
+      'schedule.manage',
+      branchId: pt.branchId,
+    );
+    final isOwningTrainer =
+        _hasOrgPermission(orgId, 'pt.manage', branchId: pt.branchId) &&
+        trainer?.userId == user.id;
+    if (!canManageSchedule && !isOwningTrainer) {
+      throw const AppException(
+        AppFailure.forbidden(
+          message: 'Personal trainers can only complete their own PT sessions.',
+        ),
       );
     }
     if (pt.status != PtSessionStatus.scheduled) {
@@ -2658,6 +3006,924 @@ class DemoSandboxEngine {
     ptSessions[ptSessionId] = pt.copyWith(
       status: PtSessionStatus.completed,
       notes: notes?.trim().isNotEmpty == true ? notes!.trim() : pt.notes,
+    );
+  }
+
+  List<PtSessionModel> fetchPtSessions({
+    required String orgId,
+    String? branchId,
+    String? memberId,
+  }) {
+    final user = requireCurrentUser();
+    final isOpsMgr =
+        _hasOrgPermission(orgId, 'schedule.manage', branchId: branchId) ||
+        _hasOrgPermission(orgId, 'booking.read', branchId: branchId);
+    final isSelfMember =
+        memberId != null && members[memberId]?.userId == user.id;
+    final isPtTrainer = _hasOrgPermission(
+      orgId,
+      'pt.manage',
+      branchId: branchId,
+    );
+    if (memberId != null && !isSelfMember && !isOpsMgr) {
+      throw const AppException(
+        AppFailure.forbidden(
+          message: 'Not authorized to view member PT sessions.',
+        ),
+      );
+    }
+    if (memberId == null && !isOpsMgr && !isPtTrainer) {
+      throw const AppException(
+        AppFailure.forbidden(
+          message: 'Missing permission to view PT schedule.',
+        ),
+      );
+    }
+
+    return ptSessions.values
+        .where((s) {
+          if (s.organizationId != orgId) return false;
+          if (branchId != null && s.branchId != branchId) return false;
+          if (memberId != null && s.memberId != memberId) return false;
+          if (memberId == null && !isOpsMgr) {
+            final ownerUid = trainerProfiles[s.trainerId]?.userId;
+            if (ownerUid != user.id) return false;
+          }
+          return true;
+        })
+        .map((s) {
+          final m = members[s.memberId];
+          final t = trainerProfiles[s.trainerId];
+          return s.copyWith(
+            trainerUserId: s.trainerUserId ?? t?.userId,
+            trainerDisplayName: t?.displayName ?? s.trainerDisplayName,
+            memberDisplayName: m?.fullName ?? s.memberDisplayName,
+            memberCode: m?.memberCode ?? s.memberCode,
+          );
+        })
+        .toList()
+      ..sort((a, b) => a.startsAt.compareTo(b.startsAt));
+  }
+
+  List<PtClientLookup> lookupMembersForPtBooking({
+    required String orgId,
+    required String branchId,
+    String query = '',
+  }) {
+    final user = requireCurrentUser();
+    final allowed =
+        _hasOrgPermission(orgId, 'pt.manage', branchId: branchId) ||
+        _hasOrgPermission(orgId, 'booking.manage', branchId: branchId) ||
+        _hasOrgPermission(orgId, 'schedule.manage', branchId: branchId);
+    if (!allowed) {
+      throw const AppException(
+        AppFailure.forbidden(
+          message: 'Not authorized to look up members for PT booking.',
+        ),
+      );
+    }
+    final q = query.trim().toLowerCase();
+    final now = DateTime.now().toUtc();
+    return members.values
+        .where((m) {
+          if (m.organizationId != orgId || m.status != MemberStatus.active) {
+            return false;
+          }
+          if (q.isEmpty) return true;
+          return m.fullName.toLowerCase().contains(q) ||
+              m.memberCode.toLowerCase().contains(q);
+        })
+        .map((m) {
+          var credits = 0;
+          for (final g in creditGrants) {
+            if (g.organizationId != orgId ||
+                g.memberId != m.id ||
+                g.creditType != CreditType.ptCredit ||
+                g.status != CreditGrantStatus.active ||
+                g.remainingAmount <= 0) {
+              continue;
+            }
+            if (g.expiresAt != null && !g.expiresAt!.isAfter(now)) continue;
+            if (g.subscriptionId != null) {
+              final sub = subscriptions
+                  .where((s) => s.id == g.subscriptionId)
+                  .firstOrNull;
+              if (sub?.status == SubscriptionStatus.frozen) continue;
+            }
+            if (g.branchAccessScope != BranchAccessScope.allBranches &&
+                !g.allowedBranchIds.contains(branchId)) {
+              continue;
+            }
+            credits += g.remainingAmount;
+          }
+          return PtClientLookup(
+            id: m.id,
+            memberCode: m.memberCode,
+            fullName: m.fullName,
+            homeBranchId: m.homeBranchId,
+            status: m.status.name,
+            availablePtCredits: credits,
+          );
+        })
+        .where((_) => user.id.isNotEmpty)
+        .toList()
+      ..sort((a, b) {
+        final byCred = b.availablePtCredits.compareTo(a.availablePtCredits);
+        return byCred != 0 ? byCred : a.fullName.compareTo(b.fullName);
+      });
+  }
+
+  PtCancelOutcome cancelPtSession({
+    required String orgId,
+    required String ptSessionId,
+    String? reason,
+  }) {
+    final user = requireCurrentUser();
+    final pt = ptSessions[ptSessionId];
+    if (pt == null || pt.organizationId != orgId) {
+      throw const AppException(
+        AppFailure.notFound(message: 'PT session not found.'),
+      );
+    }
+    final isSelf = members[pt.memberId]?.userId == user.id;
+    final isOpsMgr =
+        _hasOrgPermission(orgId, 'schedule.manage', branchId: pt.branchId) ||
+        _hasOrgPermission(orgId, 'booking.manage', branchId: pt.branchId);
+    final isOwningTrainer =
+        _hasOrgPermission(orgId, 'pt.manage', branchId: pt.branchId) &&
+        trainerProfiles[pt.trainerId]?.userId == user.id;
+    if (!isSelf && !isOpsMgr && !isOwningTrainer) {
+      throw const AppException(
+        AppFailure.forbidden(
+          message: 'Not authorized to cancel this PT session.',
+        ),
+      );
+    }
+    if (pt.status == PtSessionStatus.cancelledEarly ||
+        pt.status == PtSessionStatus.cancelledLate) {
+      return PtCancelOutcome(status: pt.status, idempotentReplay: true);
+    }
+    if (pt.status != PtSessionStatus.scheduled) {
+      throw const AppException(
+        AppFailure.conflict(
+          message: 'Only scheduled PT sessions can be cancelled.',
+          code: 'INVALID_STATE',
+        ),
+      );
+    }
+
+    final now = DateTime.now().toUtc();
+    final isEarly =
+        !now.isAfter(pt.startsAt.subtract(const Duration(hours: 2))) ||
+        isOpsMgr ||
+        isOwningTrainer;
+    final nextStatus = isEarly
+        ? PtSessionStatus.cancelledEarly
+        : PtSessionStatus.cancelledLate;
+
+    final reasonClean = reason?.trim();
+    ptSessions[ptSessionId] = pt.copyWith(
+      status: nextStatus,
+      notes: (reasonClean != null && reasonClean.isNotEmpty)
+          ? (pt.notes != null && pt.notes!.trim().isNotEmpty
+                ? '${pt.notes}\nCancelled: $reasonClean'
+                : 'Cancelled: $reasonClean')
+          : pt.notes,
+    );
+
+    var refundedTotal = 0;
+    if (isEarly) {
+      final consumes = ledgerEntries
+          .where(
+            (e) =>
+                e.organizationId == orgId &&
+                e.referenceType == 'pt_session' &&
+                e.referenceId == ptSessionId &&
+                e.entryType == LedgerEntryType.consume,
+          )
+          .toList();
+      for (final entry in consumes) {
+        final idx = creditGrants.indexWhere((g) => g.id == entry.grantId);
+        if (idx < 0) continue;
+        final g = creditGrants[idx];
+        if ((g.status == CreditGrantStatus.active ||
+                g.status == CreditGrantStatus.depleted) &&
+            (g.expiresAt == null || g.expiresAt!.isAfter(now))) {
+          final amt = -entry.delta;
+          creditGrants[idx] = g.copyWith(
+            remainingAmount: g.remainingAmount + amt,
+            status: CreditGrantStatus.active,
+          );
+          ledgerEntries.add(
+            CreditLedgerEntryModel(
+              id: _uuid.v4(),
+              organizationId: orgId,
+              memberId: pt.memberId,
+              grantId: g.id,
+              creditType: CreditType.ptCredit,
+              entryType: LedgerEntryType.refund,
+              delta: amt,
+              referenceType: 'pt_session',
+              referenceId: ptSessionId,
+              reason: (reasonClean != null && reasonClean.isNotEmpty)
+                  ? reasonClean
+                  : 'PT session cancelled refund',
+              createdAt: now,
+            ),
+          );
+          refundedTotal += amt;
+        }
+      }
+    }
+    _recordAudit(
+      orgId,
+      pt.branchId,
+      user.id,
+      'pt_session.cancelled',
+      'pt_session',
+      ptSessionId,
+      <String, dynamic>{'refunded_credits': refundedTotal},
+    );
+    return PtCancelOutcome(status: nextStatus, refundedCredits: refundedTotal);
+  }
+
+  List<PaymentRefundModel> fetchPaymentRefunds({
+    required String orgId,
+    required String paymentId,
+  }) {
+    requireCurrentUser();
+    return paymentRefunds
+        .where((r) => r.organizationId == orgId && r.paymentId == paymentId)
+        .toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  }
+
+  RefundOutcome recordPaymentRefund({
+    required String orgId,
+    required String paymentId,
+    required int amountMinor,
+    required String reason,
+    required String idempotencyKey,
+    String? externalReference,
+  }) {
+    final user = requireCurrentUser();
+    final idx = paymentRecords.indexWhere(
+      (p) => p.organizationId == orgId && p.id == paymentId,
+    );
+    if (idx < 0) {
+      throw const AppException(
+        AppFailure.notFound(message: 'Payment record not found.'),
+      );
+    }
+    final payment = paymentRecords[idx];
+    _requirePermission(
+      orgId,
+      'payment.refund',
+      branchId: payment.branchId,
+      message: 'Missing payment.refund permission.',
+    );
+
+    final replayKey = '$paymentId:$idempotencyKey';
+    final existingOutcome = _refundIdempotency[replayKey];
+    if (existingOutcome != null) {
+      return existingOutcome.copyWith(idempotentReplay: true);
+    }
+
+    if (reason.trim().isEmpty) {
+      throw const AppException(
+        AppFailure.validation(message: 'Refund reason is required.'),
+      );
+    }
+    if (amountMinor <= 0) {
+      throw const AppException(
+        AppFailure.validation(message: 'Refund amount must be positive.'),
+      );
+    }
+    if (payment.status != PaymentStatus.paid) {
+      throw const AppException(
+        AppFailure.conflict(
+          message:
+              'Only paid transactions with remaining balance can be refunded.',
+          code: 'PAYMENT_NOT_REFUNDABLE',
+        ),
+      );
+    }
+    if (amountMinor > payment.remainingRefundableMinor) {
+      throw AppException(
+        AppFailure.conflict(
+          message:
+              'Refund ($amountMinor) exceeds remaining balance (${payment.remainingRefundableMinor}).',
+          code: 'REFUND_EXCEEDS_REMAINING',
+        ),
+      );
+    }
+
+    final now = DateTime.now().toUtc();
+    final newTotal = payment.refundedAmountMinor + amountMinor;
+    final nextStatus = newTotal == payment.amountMinor
+        ? PaymentStatus.refunded
+        : PaymentStatus.paid;
+    final refundId = _uuid.v4();
+    paymentRefunds.add(
+      PaymentRefundModel(
+        id: refundId,
+        organizationId: orgId,
+        branchId: payment.branchId,
+        paymentId: paymentId,
+        memberId: payment.memberId,
+        amountMinor: amountMinor,
+        currencyCode: payment.currencyCode,
+        refundChannel: 'manual_recorded',
+        reason: reason.trim(),
+        externalReference: externalReference?.trim().isEmpty ?? true
+            ? null
+            : externalReference!.trim(),
+        recordedBy: user.id,
+        createdAt: now,
+      ),
+    );
+    paymentRecords[idx] = payment.copyWith(
+      refundedAmountMinor: newTotal,
+      refundReason: reason.trim(),
+      refundedAt: now,
+      status: nextStatus,
+    );
+    _recordAudit(
+      orgId,
+      payment.branchId,
+      user.id,
+      'payment.refund_recorded',
+      'payment_record',
+      paymentId,
+      <String, dynamic>{
+        'amount_minor': amountMinor,
+        'total_refunded_minor': newTotal,
+      },
+    );
+    final outcome = RefundOutcome(
+      refundId: refundId,
+      paymentId: paymentId,
+      paymentStatus: nextStatus,
+      amountMinor: amountMinor,
+      totalRefundedMinor: newTotal,
+    );
+    _refundIdempotency[replayKey] = outcome;
+    return outcome;
+  }
+
+  void updateOrganizationSettings({
+    required String orgId,
+    required String name,
+    required String businessType,
+    required String timezone,
+    required String currencyCode,
+  }) {
+    final user = requireCurrentUser();
+    _requirePermission(orgId, 'org.manage');
+    final existing = organizations[orgId];
+    if (existing == null) {
+      throw const AppException(
+        AppFailure.notFound(message: 'Organization not found.'),
+      );
+    }
+    organizations[orgId] = existing.copyWith(
+      name: name.trim(),
+      businessType: businessType,
+      timezone: timezone,
+      currencyCode: currencyCode.trim().toUpperCase(),
+    );
+    _recordAudit(
+      orgId,
+      null,
+      user.id,
+      'organization.updated',
+      'organization',
+      orgId,
+    );
+  }
+
+  void rotateOrgSigningKey(String orgId) {
+    final user = requireCurrentUser();
+    _requirePermission(orgId, 'org.manage');
+    _orgSigningSecrets[orgId] = _uuid.v4();
+    _recordAudit(
+      orgId,
+      null,
+      user.id,
+      'qr_signing_key.rotated',
+      'organization',
+      orgId,
+    );
+  }
+
+  BranchModel updateBranch({
+    required String orgId,
+    required String branchId,
+    required String name,
+    required String code,
+    String? address,
+    String? timezone,
+    required bool isActive,
+  }) {
+    final user = requireCurrentUser();
+    _requirePermission(orgId, 'branch.manage');
+    final existing = branches[branchId];
+    if (existing == null || existing.organizationId != orgId) {
+      throw const AppException(
+        AppFailure.notFound(message: 'Branch not found.'),
+      );
+    }
+    final updated = existing.copyWith(
+      name: name.trim(),
+      code: code.trim().toUpperCase(),
+      address: address?.trim().isEmpty ?? true ? null : address!.trim(),
+      timezone: timezone ?? existing.timezone,
+      isActive: isActive,
+    );
+    branches[branchId] = updated;
+    _recordAudit(
+      orgId,
+      branchId,
+      user.id,
+      'branch.updated',
+      'branch',
+      branchId,
+    );
+    return updated;
+  }
+
+  RoomModel updateRoom({
+    required String orgId,
+    required String roomId,
+    required String name,
+    required String roomType,
+    required int defaultCapacity,
+    required bool isActive,
+  }) {
+    final existing = rooms[roomId];
+    if (existing == null || existing.organizationId != orgId) {
+      throw const AppException(AppFailure.notFound(message: 'Room not found.'));
+    }
+    _requirePermission(orgId, 'branch.manage', branchId: existing.branchId);
+    final updated = existing.copyWith(
+      name: name.trim(),
+      roomType: roomType.trim().isEmpty ? 'studio' : roomType.trim(),
+      defaultCapacity: defaultCapacity,
+      isActive: isActive,
+    );
+    rooms[roomId] = updated;
+    return updated;
+  }
+
+  MemberModel updateMember({
+    required String orgId,
+    required String memberId,
+    required String homeBranchId,
+    required String fullName,
+    String? email,
+    String? phone,
+    String? emergencyContactName,
+    String? emergencyContactPhone,
+  }) {
+    final user = requireCurrentUser();
+    final existing = members[memberId];
+    if (existing == null || existing.organizationId != orgId) {
+      throw const AppException(
+        AppFailure.notFound(message: 'Member not found.'),
+      );
+    }
+    _requirePermission(orgId, 'member.write', branchId: existing.homeBranchId);
+    final updated = existing.copyWith(
+      homeBranchId: homeBranchId,
+      fullName: fullName.trim(),
+      email: email?.trim().isEmpty ?? true ? null : email!.trim(),
+      phone: phone?.trim().isEmpty ?? true ? null : phone!.trim(),
+      emergencyContactName: emergencyContactName?.trim().isEmpty ?? true
+          ? null
+          : emergencyContactName!.trim(),
+      emergencyContactPhone: emergencyContactPhone?.trim().isEmpty ?? true
+          ? null
+          : emergencyContactPhone!.trim(),
+    );
+    members[memberId] = updated;
+    _recordAudit(
+      orgId,
+      homeBranchId,
+      user.id,
+      'member.updated',
+      'member',
+      memberId,
+    );
+    return updated;
+  }
+
+  void updateMyMemberContact({
+    required String orgId,
+    String? phone,
+    String? emergencyContactName,
+    String? emergencyContactPhone,
+  }) {
+    final user = requireCurrentUser();
+    final existing = members.values
+        .where((m) => m.organizationId == orgId && m.userId == user.id)
+        .firstOrNull;
+    if (existing == null) {
+      throw const AppException(
+        AppFailure.notFound(message: 'Linked member profile not found.'),
+      );
+    }
+    members[existing.id] = existing.copyWith(
+      phone: phone?.trim().isEmpty ?? true ? null : phone!.trim(),
+      emergencyContactName: emergencyContactName?.trim().isEmpty ?? true
+          ? null
+          : emergencyContactName!.trim(),
+      emergencyContactPhone: emergencyContactPhone?.trim().isEmpty ?? true
+          ? null
+          : emergencyContactPhone!.trim(),
+    );
+  }
+
+  List<StaffAssignmentModel> fetchOrganizationStaff({
+    required String orgId,
+    String? branchId,
+  }) {
+    _requirePermission(orgId, 'role.assign', branchId: branchId);
+    final now = DateTime.now().toUtc();
+    final list = <StaffAssignmentModel>[];
+    for (final entry in workspacesByUser.entries) {
+      final userId = entry.key;
+      final profile = profiles[userId];
+      for (final ws in entry.value) {
+        if (ws.organizationId != orgId || ws.roleCode == 'member') continue;
+        if (branchId != null && ws.branchId != branchId) continue;
+        list.add(
+          StaffAssignmentModel(
+            assignmentId: '$userId|${ws.contextKey}',
+            userId: userId,
+            fullName: profile?.fullName ?? '',
+            email: _emailForUser(userId),
+            roleCode: ws.roleCode,
+            roleDisplayName: ws.roleDisplayName,
+            roleRank: ws.roleRank,
+            branchId: ws.branchId,
+            branchName: ws.branchName,
+            createdAt: now,
+          ),
+        );
+      }
+    }
+    return list..sort((a, b) => b.roleRank.compareTo(a.roleRank));
+  }
+
+  void assignUserRole({
+    required String orgId,
+    required String targetUserId,
+    required String roleCode,
+    String? branchId,
+  }) {
+    final actor = requireCurrentUser();
+    _requirePermission(orgId, 'role.assign', branchId: branchId);
+    final role = RitmaRole.fromCode(roleCode);
+    if (_highestRankForUser(actor.id, orgId) < role.rank) {
+      throw const AppException(
+        AppFailure.forbidden(
+          message: 'Cannot assign a role higher than your own rank.',
+        ),
+      );
+    }
+    final org = organizations[orgId];
+    final branch = branchId != null ? branches[branchId] : null;
+    final list = workspacesByUser[targetUserId] ?? <WorkspaceContext>[];
+    final candidate = _buildWorkspace(
+      orgId: orgId,
+      orgName: org?.name ?? 'Organization',
+      branchId: branchId,
+      branchName: branch?.name,
+      role: role,
+    );
+    if (!list.any((w) => w.contextKey == candidate.contextKey)) {
+      list.add(candidate);
+      workspacesByUser[targetUserId] = list;
+    }
+    _recordAudit(
+      orgId,
+      branchId,
+      actor.id,
+      'role.assigned',
+      'user_role',
+      targetUserId,
+    );
+  }
+
+  void revokeUserRole({required String orgId, required String assignmentId}) {
+    final actor = requireCurrentUser();
+    final sep = assignmentId.indexOf('|');
+    if (sep <= 0) {
+      throw const AppException(
+        AppFailure.notFound(message: 'Role assignment not found.'),
+      );
+    }
+    final targetUid = assignmentId.substring(0, sep);
+    final ctxKey = assignmentId.substring(sep + 1);
+    final list = workspacesByUser[targetUid];
+    final targetWs = list?.where((w) => w.contextKey == ctxKey).firstOrNull;
+    if (list == null || targetWs == null || targetWs.organizationId != orgId) {
+      throw const AppException(
+        AppFailure.notFound(message: 'Role assignment not found.'),
+      );
+    }
+    _requirePermission(orgId, 'role.assign', branchId: targetWs.branchId);
+    if (_highestRankForUser(actor.id, orgId) < targetWs.roleRank) {
+      throw const AppException(
+        AppFailure.forbidden(
+          message: 'Cannot revoke a role higher than your own rank.',
+        ),
+      );
+    }
+    if (targetWs.roleCode == 'org_owner') {
+      final ownerCount = workspacesByUser.values
+          .expand((w) => w)
+          .where((w) => w.organizationId == orgId && w.roleCode == 'org_owner')
+          .length;
+      if (ownerCount <= 1) {
+        throw const AppException(
+          AppFailure.conflict(
+            message: 'Organization must retain at least one owner.',
+            code: 'LAST_ORG_OWNER',
+          ),
+        );
+      }
+    }
+    list.removeWhere((w) => w.contextKey == ctxKey);
+    _recordAudit(
+      orgId,
+      targetWs.branchId,
+      actor.id,
+      'role.revoked',
+      'user_role',
+      targetUid,
+    );
+  }
+
+  List<OrganizationInvitationModel> fetchOrganizationInvitations({
+    required String orgId,
+    String? branchId,
+  }) {
+    _requirePermission(orgId, 'role.assign', branchId: branchId);
+    return _staffInviteRecords
+        .where(
+          (r) =>
+              r.organizationId == orgId &&
+              r.status == 'pending' &&
+              (branchId == null || r.branchId == branchId),
+        )
+        .map(
+          (r) => OrganizationInvitationModel(
+            id: r.invitationId,
+            invitedEmail: r.invitedEmail,
+            roleCode: r.role.code,
+            roleDisplayName: r.role.displayName,
+            roleRank: r.role.rank,
+            branchId: r.branchId,
+            branchName: r.branchId != null ? branches[r.branchId]?.name : null,
+            status: r.status,
+            expiresAt: r.expiresAt,
+            createdAt: r.createdAt,
+          ),
+        )
+        .toList();
+  }
+
+  void revokeOrganizationInvitation({
+    required String orgId,
+    required String invitationId,
+  }) {
+    final actor = requireCurrentUser();
+    final idx = _staffInviteRecords.indexWhere(
+      (r) => r.organizationId == orgId && r.invitationId == invitationId,
+    );
+    if (idx < 0) {
+      throw const AppException(
+        AppFailure.notFound(message: 'Pending invitation not found.'),
+      );
+    }
+    final rec = _staffInviteRecords[idx];
+    _requirePermission(orgId, 'role.assign', branchId: rec.branchId);
+    if (_highestRankForUser(actor.id, orgId) < rec.role.rank) {
+      throw const AppException(
+        AppFailure.forbidden(
+          message: 'Cannot revoke an invitation higher than your own rank.',
+        ),
+      );
+    }
+    _staffInviteRecords[idx] = rec.copyWith(status: 'revoked');
+    _staffInvites.remove(rec.token);
+  }
+
+  List<AuditLogModel> fetchAuditLogs({
+    required String orgId,
+    String? branchId,
+    int limit = 50,
+  }) {
+    _requirePermission(orgId, 'audit.read', branchId: branchId);
+    return auditLogs
+        .where(
+          (l) =>
+              l.organizationId == orgId &&
+              (branchId == null || l.branchId == branchId),
+        )
+        .take(limit)
+        .toList();
+  }
+
+  ReportExportPayload getReportExportData({
+    required String orgId,
+    required ReportExportType reportType,
+    String? branchId,
+    int windowDays = 30,
+  }) {
+    requireCurrentUser();
+    final org = organizations[orgId];
+    if (org == null) {
+      throw const AppException(
+        AppFailure.notFound(message: 'Organization not found.'),
+      );
+    }
+    final allowed = switch (reportType) {
+      ReportExportType.visits => _hasOrgPermission(
+        orgId,
+        'checkin.read',
+        branchId: branchId,
+      ),
+      ReportExportType.payments => _hasOrgPermission(
+        orgId,
+        'payment.read',
+        branchId: branchId,
+      ),
+      ReportExportType.members => _hasOrgPermission(
+        orgId,
+        'member.read',
+        branchId: branchId,
+      ),
+      ReportExportType.attendance =>
+        _hasOrgPermission(orgId, 'booking.read', branchId: branchId) ||
+            _hasOrgPermission(orgId, 'schedule.manage', branchId: branchId) ||
+            _hasOrgPermission(orgId, 'attendance.mark', branchId: branchId),
+    };
+    if (!allowed) {
+      throw const AppException(
+        AppFailure.forbidden(
+          message: 'Not authorized to export this report or branch scope.',
+        ),
+      );
+    }
+
+    final cutoff = DateTime.now().toUtc().subtract(Duration(days: windowDays));
+    final scopeName = branchId == null
+        ? 'All Branches'
+        : (branches[branchId]?.name ?? 'Branch');
+
+    final columns = switch (reportType) {
+      ReportExportType.visits => const [
+        'Checked In At',
+        'Branch',
+        'Member Code',
+        'Member Name',
+        'Method',
+        'Checked Out At',
+        'Override Reason',
+      ],
+      ReportExportType.payments => const [
+        'Paid At',
+        'Branch',
+        'Member Code',
+        'Member Name',
+        'Method',
+        'Status',
+        'Gross Amount Minor',
+        'Refunded Amount Minor',
+        'Net Amount Minor',
+        'Currency',
+        'Reference',
+      ],
+      ReportExportType.members => const [
+        'Member Code',
+        'Full Name',
+        'Home Branch',
+        'Status',
+        'Email',
+        'Account Claimed',
+      ],
+      ReportExportType.attendance => const [
+        'Starts At',
+        'Branch',
+        'Session Title',
+        'Instructor',
+        'Member Code',
+        'Member Name',
+        'Booking Status',
+        'Attendance Status',
+      ],
+    };
+
+    final rows = switch (reportType) {
+      ReportExportType.visits =>
+        facilityVisits
+            .where(
+              (v) =>
+                  v.organizationId == orgId &&
+                  (branchId == null || v.branchId == branchId) &&
+                  !v.checkedInAt.isBefore(cutoff),
+            )
+            .map((v) {
+              final m = members[v.memberId];
+              return <dynamic>[
+                v.checkedInAt.toIso8601String(),
+                branches[v.branchId]?.name ?? '',
+                m?.memberCode ?? '',
+                m?.fullName ?? v.memberName ?? '',
+                v.checkInMethod,
+                v.checkedOutAt?.toIso8601String() ?? '',
+                v.overrideReason ?? '',
+              ];
+            })
+            .toList(),
+      ReportExportType.payments =>
+        paymentRecords
+            .where(
+              (p) =>
+                  p.organizationId == orgId &&
+                  (branchId == null || p.branchId == branchId) &&
+                  !p.paidAt.isBefore(cutoff),
+            )
+            .map((p) {
+              final m = members[p.memberId];
+              return <dynamic>[
+                p.paidAt.toIso8601String(),
+                branches[p.branchId]?.name ?? '',
+                m?.memberCode ?? '',
+                m?.fullName ?? p.memberDisplayName,
+                p.method.label,
+                p.status.name,
+                p.amountMinor,
+                p.refundedAmountMinor,
+                p.netAmountMinor,
+                p.currencyCode,
+                p.externalReference ?? '',
+              ];
+            })
+            .toList(),
+      ReportExportType.members =>
+        members.values
+            .where(
+              (m) =>
+                  m.organizationId == orgId &&
+                  (branchId == null || m.homeBranchId == branchId),
+            )
+            .map(
+              (m) => <dynamic>[
+                m.memberCode,
+                m.fullName,
+                branches[m.homeBranchId]?.name ?? '',
+                m.status.name,
+                m.email ?? '',
+                m.userId != null ? 'Yes' : 'No',
+              ],
+            )
+            .toList(),
+      ReportExportType.attendance =>
+        classBookings
+            .where(
+              (b) =>
+                  b.organizationId == orgId &&
+                  (branchId == null || b.branchId == branchId),
+            )
+            .map((b) {
+              final s = classSessions[b.sessionId];
+              final m = members[b.memberId];
+              return <dynamic>[
+                s?.startsAt.toIso8601String() ?? '',
+                branches[b.branchId]?.name ?? '',
+                s?.title ?? '',
+                s?.instructorDisplayName ?? '',
+                m?.memberCode ?? '',
+                m?.fullName ?? '',
+                b.status.name,
+                b.attendanceStatus.name,
+              ];
+            })
+            .toList(),
+    };
+
+    return ReportExportPayload(
+      reportType: reportType.code,
+      organizationName: org.name,
+      branchScope: scopeName,
+      currencyCode: org.currencyCode,
+      timezone: org.timezone,
+      generatedAt: DateTime.now().toUtc(),
+      columns: columns,
+      rows: rows,
     );
   }
 
@@ -2798,14 +4064,38 @@ class DemoSandboxEngine {
 
 class _PendingStaffInvite {
   const _PendingStaffInvite({
+    required this.invitationId,
+    required this.token,
+    required this.invitedEmail,
     required this.organizationId,
     required this.role,
+    required this.createdAt,
+    required this.expiresAt,
     this.branchId,
+    this.status = 'pending',
   });
 
+  final String invitationId;
+  final String token;
+  final String invitedEmail;
   final String organizationId;
   final String? branchId;
   final RitmaRole role;
+  final DateTime createdAt;
+  final DateTime expiresAt;
+  final String status;
+
+  _PendingStaffInvite copyWith({String? status}) => _PendingStaffInvite(
+    invitationId: invitationId,
+    token: token,
+    invitedEmail: invitedEmail,
+    organizationId: organizationId,
+    role: role,
+    createdAt: createdAt,
+    expiresAt: expiresAt,
+    branchId: branchId,
+    status: status ?? this.status,
+  );
 }
 
 class _PendingMemberClaim {

@@ -36,17 +36,34 @@ final dashboardWindowDaysProvider =
       DashboardWindowDaysNotifier.new,
     );
 
+class DashboardBranchFilterNotifier extends Notifier<String?> {
+  @override
+  String? build() {
+    ref.watch(activeWorkspaceProvider);
+    return null;
+  }
+
+  void setBranch(String? branchId) => state = branchId;
+}
+
+final dashboardBranchFilterProvider =
+    NotifierProvider<DashboardBranchFilterNotifier, String?>(
+      DashboardBranchFilterNotifier.new,
+    );
+
 final operationalMetricsProvider =
     FutureProvider.autoDispose<OperationalMetricsModel>((ref) async {
       final workspace = ref.watch(activeWorkspaceProvider);
       final repo = ref.watch(dashboardRepositoryProvider);
       final windowDays = ref.watch(dashboardWindowDaysProvider);
+      final selectedOrgBranch = ref.watch(dashboardBranchFilterProvider);
       if (workspace == null || repo == null) {
         return const OperationalMetricsModel();
       }
+      final scopedBranch = workspace.branchId ?? selectedOrgBranch;
       final res = await repo.fetchOperationalMetrics(
         orgId: workspace.organizationId,
-        branchId: workspace.branchId,
+        branchId: scopedBranch,
         windowDays: windowDays,
       );
       return res.when(

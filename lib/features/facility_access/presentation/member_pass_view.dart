@@ -273,6 +273,8 @@ class MemberPassView extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: RitmaSpacing.lg),
+              _MemberEntitlementsAndLedgerSection(walletAsync: walletAsync),
+              const SizedBox(height: RitmaSpacing.lg),
               RitmaSectionHeader(
                 title: 'Recent Facility Visits',
                 subtitle: 'Verified check-ins and checkout timestamps',
@@ -331,6 +333,95 @@ class MemberPassView extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _MemberEntitlementsAndLedgerSection extends ConsumerWidget {
+  const _MemberEntitlementsAndLedgerSection({required this.walletAsync});
+
+  final AsyncValue<MemberWalletSnapshot> walletAsync;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final packages =
+        ref.watch(orgPackagesProvider).asData?.value ?? const <PackageModel>[];
+    final pkgNames = <String, String>{for (final p in packages) p.id: p.name};
+    final dateFmt = DateFormat.yMMMd();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const RitmaSectionHeader(
+          title: 'Active Memberships & Credit Ledger',
+          subtitle: 'Packages, expiry dates, and credit transactions',
+        ),
+        const SizedBox(height: RitmaSpacing.sm),
+        AsyncStateView<MemberWalletSnapshot>(
+          value: walletAsync,
+          data: (wallet) {
+            if (wallet.subscriptions.isEmpty && wallet.ledgerEntries.isEmpty) {
+              return const Card(
+                child: Padding(
+                  padding: EdgeInsets.all(RitmaSpacing.md),
+                  child: Text('No memberships or credit history yet.'),
+                ),
+              );
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ...wallet.subscriptions.map(
+                  (sub) => Card(
+                    margin: const EdgeInsets.only(bottom: RitmaSpacing.xs),
+                    child: ListTile(
+                      leading: const Icon(Icons.card_membership_outlined),
+                      title: Text(pkgNames[sub.packageId] ?? 'Membership'),
+                      subtitle: Text(
+                        'Valid until: ${sub.endsAt != null ? dateFmt.format(sub.endsAt!.toLocal()) : 'No expiry'}',
+                      ),
+                      trailing: RitmaStatusPill(
+                        label: sub.status.name.toUpperCase(),
+                        tone: sub.status == SubscriptionStatus.active
+                            ? RitmaPillTone.success
+                            : RitmaPillTone.warning,
+                      ),
+                    ),
+                  ),
+                ),
+                if (wallet.ledgerEntries.isNotEmpty) ...[
+                  const SizedBox(height: RitmaSpacing.sm),
+                  Text(
+                    'Recent Credit Ledger',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: RitmaSpacing.xs),
+                  ...wallet.ledgerEntries.take(8).map((entry) {
+                    final isPositive = entry.delta >= 0;
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: RitmaSpacing.xs),
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(
+                          isPositive
+                              ? Icons.add_circle_outline
+                              : Icons.remove_circle_outline,
+                        ),
+                        title: Text(
+                          '${isPositive ? '+' : ''}${entry.delta} ${entry.creditType.label}',
+                        ),
+                        subtitle: Text(
+                          '${(entry.reason ?? '').isNotEmpty ? entry.reason! : entry.entryType.name} • ${dateFmt.format(entry.createdAt.toLocal())}',
+                        ),
+                      ),
+                    );
+                  }),
+                ],
+              ],
+            );
+          },
+        ),
+      ],
     );
   }
 }

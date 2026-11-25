@@ -1,5 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
+import '../../../core/errors/app_failure.dart';
+import '../../../core/errors/error_mapper.dart';
 import '../../../core/repository/base_repository.dart';
 import '../../../core/result/result.dart';
 import '../domain/package_entitlement_repository.dart';
@@ -11,6 +13,26 @@ class SupabasePackageEntitlementRepository extends BaseRepository
     : super(loggerName: 'supabase_package_repo');
 
   final sb.SupabaseClient _client;
+
+  PackageModel _mapPackage(Map<dynamic, dynamic> raw) {
+    final map = Map<String, dynamic>.from(raw);
+    final rawRules = map['package_entitlement_rules'];
+    if (rawRules is List) {
+      map['package_entitlement_rules'] = rawRules.map((r) {
+        final ruleMap = Map<String, dynamic>.from(r as Map);
+        final branchRel = ruleMap.remove('package_rule_branches');
+        if (branchRel is List) {
+          ruleMap['allowedBranchIds'] = branchRel
+              .whereType<Map<dynamic, dynamic>>()
+              .map((b) => b['branch_id'])
+              .whereType<String>()
+              .toList();
+        }
+        return ruleMap;
+      }).toList();
+    }
+    return PackageModel.fromJson(map);
+  }
 
   @override
   Future<Result<List<ClassTypeModel>>> fetchClassTypes(String orgId) {
@@ -52,13 +74,12 @@ class SupabasePackageEntitlementRepository extends BaseRepository
     return guard(() async {
       final rows = await _client
           .from('packages')
-          .select('*, package_entitlement_rules(*)')
+          .select(
+            '*, package_entitlement_rules(*, package_rule_branches(branch_id))',
+          )
           .eq('organization_id', orgId)
-          .eq('is_active', true)
           .order('name', ascending: true);
-      return rows
-          .map((row) => PackageModel.fromJson(Map<String, dynamic>.from(row)))
-          .toList();
+      return rows.map(_mapPackage).toList();
     }, operation: 'fetchPackages');
   }
 
@@ -73,6 +94,16 @@ class SupabasePackageEntitlementRepository extends BaseRepository
     required List<CreatePackageRuleInput> rules,
   }) {
     return guard(() async {
+      for (final rule in rules) {
+        if (rule.branchAccessScope == BranchAccessScope.selectedBranches &&
+            rule.allowedBranchIds.isEmpty) {
+          throw const AppException(
+            AppFailure.validation(
+              message: 'Select at least one branch for selected-branch access.',
+            ),
+          );
+        }
+      }
       final pkgRow = await _client
           .from('packages')
           .insert(<String, dynamic>{
@@ -141,11 +172,49 @@ class SupabasePackageEntitlementRepository extends BaseRepository
 
       final full = await _client
           .from('packages')
-          .select('*, package_entitlement_rules(*)')
+          .select(
+            '*, package_entitlement_rules(*, package_rule_branches(branch_id))',
+          )
           .eq('id', pkgId)
           .single();
-      return PackageModel.fromJson(Map<String, dynamic>.from(full));
+      return _mapPackage(full);
     }, operation: 'createPackage');
+  }
+
+  @override
+  Future<Result<void>> updatePackageDetails({
+    required String orgId,
+    required String packageId,
+    required String name,
+    String description = '',
+    int? priceMinor,
+    required bool isActive,
+    BranchAccessScope? branchAccessScope,
+    List<String>? allowedBranchIds,
+  }) {
+    return guard(() async {
+      if (branchAccessScope == BranchAccessScope.selectedBranches &&
+          (allowedBranchIds == null || allowedBranchIds.isEmpty)) {
+        throw const AppException(
+          AppFailure.validation(
+            message: 'Select at least one branch for selected-branch access.',
+          ),
+        );
+      }
+      await _client.rpc<void>(
+        'update_package_details',
+        params: <String, dynamic>{
+          'p_org_id': orgId,
+          'p_package_id': packageId,
+          'p_name': name.trim(),
+          'p_description': description.trim(),
+          'p_price_minor': priceMinor,
+          'p_is_active': isActive,
+          'p_branch_access_scope': branchAccessScope?.dbValue,
+          'p_allowed_branch_ids': allowedBranchIds,
+        },
+      );
+    }, operation: 'updatePackageDetails');
   }
 
   @override
@@ -235,7 +304,7 @@ class SupabasePackageEntitlementRepository extends BaseRepository
           'p_branch_id': branchId,
           'p_member_id': memberId,
           'p_package_id': packageId,
-          'p_starts_at': (startsAt ?? DateTime.now().toUtc()).toIso8601String(),
+          'p_starts_at': startsAt?.toUtc().toIso8601String(),
           'p_payment_method': _paymentMethodDb(paymentMethod),
           'p_idempotency_key': idempotencyKey,
         },

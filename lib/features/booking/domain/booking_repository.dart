@@ -23,6 +23,27 @@ abstract interface class BookingRepository {
     String instructorDisplayName = '',
   });
 
+  Future<Result<List<AssignableInstructor>>> fetchAssignableInstructors({
+    required String orgId,
+    String? branchId,
+  });
+
+  Future<Result<ClassSessionModel>> updateClassSession({
+    required String orgId,
+    required String sessionId,
+    required String roomId,
+    required String classTypeId,
+    required String title,
+    required DateTime startsAt,
+    required DateTime endsAt,
+    required int capacity,
+    required int creditCost,
+    required DateTime cancellationCutoffAt,
+    required bool waitlistEnabled,
+    String? instructorUserId,
+    required String instructorDisplayName,
+  });
+
   Future<Result<void>> cancelClassSession({
     required String orgId,
     required String sessionId,

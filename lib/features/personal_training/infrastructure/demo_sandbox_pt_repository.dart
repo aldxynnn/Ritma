@@ -45,17 +45,30 @@ class DemoSandboxPtRepository extends BaseRepository implements PtRepository {
     String? branchId,
     String? memberId,
   }) {
-    return guard(() async {
-      return _engine.ptSessions.values
-          .where(
-            (s) =>
-                s.organizationId == orgId &&
-                (branchId == null || s.branchId == branchId) &&
-                (memberId == null || s.memberId == memberId),
-          )
-          .toList()
-        ..sort((a, b) => a.startsAt.compareTo(b.startsAt));
-    }, operation: 'demo.fetchPtSessions');
+    return guard(
+      () async => _engine.fetchPtSessions(
+        orgId: orgId,
+        branchId: branchId,
+        memberId: memberId,
+      ),
+      operation: 'demo.fetchPtSessions',
+    );
+  }
+
+  @override
+  Future<Result<List<PtClientLookup>>> lookupMembersForPtBooking({
+    required String orgId,
+    required String branchId,
+    String query = '',
+  }) {
+    return guard(
+      () async => _engine.lookupMembersForPtBooking(
+        orgId: orgId,
+        branchId: branchId,
+        query: query,
+      ),
+      operation: 'demo.lookupMembersForPtBooking',
+    );
   }
 
   @override
@@ -97,6 +110,22 @@ class DemoSandboxPtRepository extends BaseRepository implements PtRepository {
         notes: notes,
       ),
       operation: 'demo.completePtSession',
+    );
+  }
+
+  @override
+  Future<Result<PtCancelOutcome>> cancelPtSession({
+    required String orgId,
+    required String ptSessionId,
+    String? reason,
+  }) {
+    return guard(
+      () async => _engine.cancelPtSession(
+        orgId: orgId,
+        ptSessionId: ptSessionId,
+        reason: reason,
+      ),
+      operation: 'demo.cancelPtSession',
     );
   }
 }

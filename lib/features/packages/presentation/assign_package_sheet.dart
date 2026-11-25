@@ -2,13 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/state/ritma_sync.dart';
 import '../../../core/theme/ritma_spacing.dart';
 import '../../../core/widgets/async_state_view.dart';
 import '../../auth/application/auth_providers.dart';
-import '../../dashboard/application/dashboard_providers.dart';
 import '../../organizations/application/organization_providers.dart';
 import '../../organizations/domain/branch_model.dart';
-import '../../payments/application/payment_providers.dart';
 import '../application/package_providers.dart';
 import '../domain/package_models.dart';
 
@@ -72,9 +71,7 @@ class _AssignPackageSheetState extends ConsumerState<AssignPackageSheet> {
 
     result.when(
       success: (_) {
-        ref.invalidate(memberWalletProvider(widget.memberId));
-        ref.invalidate(orgPaymentsProvider);
-        ref.invalidate(operationalMetricsProvider);
+        RitmaSync.afterPackageOrPaymentMutation(ref, memberId: widget.memberId);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Package provisioned for ${widget.memberName}.'),
@@ -129,26 +126,60 @@ class _AssignPackageSheetState extends ConsumerState<AssignPackageSheet> {
             ],
             AsyncStateView<List<PackageModel>>(
               value: packagesAsync,
-              isEmpty: (list) => list.isEmpty,
-              emptyTitle: 'No packages available',
-              data: (packages) {
-                _selectedPackageId ??= packages.first.id;
-                return DropdownButtonFormField<String>(
-                  initialValue: _selectedPackageId,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'Package'),
-                  items: packages
-                      .map(
-                        (p) => DropdownMenuItem(
-                          value: p.id,
-                          child: Text(
-                            '${p.name} (${p.packageType.label})',
-                            overflow: TextOverflow.ellipsis,
-                          ),
+              isEmpty: (list) => list.where((p) => p.isActive).isEmpty,
+              emptyTitle: 'No active packages available',
+              data: (allPackages) {
+                final packages = allPackages.where((p) => p.isActive).toList();
+                if (_selectedPackageId == null ||
+                    !packages.any((p) => p.id == _selectedPackageId)) {
+                  _selectedPackageId = packages.first.id;
+                }
+                final selectedPkg = packages
+                    .where((p) => p.id == _selectedPackageId)
+                    .firstOrNull;
+                final assignedBranch =
+                    workspace?.branchId ??
+                    _selectedBranchId ??
+                    widget.homeBranchId;
+                final hasExcludedSelectedBranches =
+                    selectedPkg != null &&
+                    selectedPkg.rules.any(
+                      (r) =>
+                          r.branchAccessScope ==
+                              BranchAccessScope.selectedBranches &&
+                          !r.allowedBranchIds.contains(assignedBranch),
+                    );
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      initialValue: _selectedPackageId,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: 'Package'),
+                      items: packages
+                          .map(
+                            (p) => DropdownMenuItem(
+                              value: p.id,
+                              child: Text(
+                                '${p.name} (${p.packageType.label})',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (val) =>
+                          setState(() => _selectedPackageId = val),
+                    ),
+                    if (hasExcludedSelectedBranches) ...[
+                      const SizedBox(height: RitmaSpacing.xs),
+                      Text(
+                        'Notice: Selected-branches package does not include the assigned branch in its allowed branches list.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.error,
                         ),
-                      )
-                      .toList(),
-                  onChanged: (val) => setState(() => _selectedPackageId = val),
+                      ),
+                    ],
+                  ],
                 );
               },
             ),

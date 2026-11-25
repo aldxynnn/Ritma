@@ -100,6 +100,9 @@ abstract final class ErrorMapper {
           'LAST_ORG_OWNER:',
           'IDEMPOTENCY_KEY_REUSED:',
           'INVALID_STATE:',
+          'ALREADY_REFUNDED:',
+          'REFUND_EXCEEDS_REMAINING:',
+          'PAYMENT_NOT_REFUNDABLE:',
         ])) {
       return AppFailure.conflict(
         message: cleanMsg,
@@ -109,7 +112,8 @@ abstract final class ErrorMapper {
     if (code == '22023' ||
         msg.startsWith('VALIDATION_ERROR:') ||
         msg.startsWith('INVALID_INVITATION:') ||
-        msg.startsWith('INVALID_CLAIM:')) {
+        msg.startsWith('INVALID_CLAIM:') ||
+        msg.startsWith('INVALID_REFUND:')) {
       return AppFailure.validation(message: cleanMsg);
     }
 

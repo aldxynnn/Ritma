@@ -50,7 +50,7 @@ class DemoSandboxPackageEntitlementRepository extends BaseRepository
     return guard(() async {
       final list =
           _engine.packages.values
-              .where((p) => p.organizationId == orgId && p.isActive)
+              .where((p) => p.organizationId == orgId)
               .toList()
             ..sort((a, b) => a.name.compareTo(b.name));
       return list;
@@ -78,6 +78,32 @@ class DemoSandboxPackageEntitlementRepository extends BaseRepository
         rules: rules,
       ),
       operation: 'demo.createPackage',
+    );
+  }
+
+  @override
+  Future<Result<void>> updatePackageDetails({
+    required String orgId,
+    required String packageId,
+    required String name,
+    String description = '',
+    int? priceMinor,
+    required bool isActive,
+    BranchAccessScope? branchAccessScope,
+    List<String>? allowedBranchIds,
+  }) {
+    return guard(
+      () async => _engine.updatePackageDetails(
+        orgId: orgId,
+        packageId: packageId,
+        name: name,
+        description: description,
+        priceMinor: priceMinor,
+        isActive: isActive,
+        branchAccessScope: branchAccessScope,
+        allowedBranchIds: allowedBranchIds,
+      ),
+      operation: 'demo.updatePackageDetails',
     );
   }
 

@@ -604,7 +604,7 @@ as String,
 /// @nodoc
 mixin _$PtSessionModel {
 
- String get id;@JsonKey(name: 'organization_id') String get organizationId;@JsonKey(name: 'branch_id') String get branchId;@JsonKey(name: 'trainer_id') String get trainerId;@JsonKey(name: 'member_id') String get memberId;@JsonKey(name: 'starts_at') DateTime get startsAt;@JsonKey(name: 'ends_at') DateTime get endsAt;@JsonKey(name: 'credit_cost') int get creditCost; PtSessionStatus get status; String? get notes;@JsonKey(name: 'trainer_display_name') String get trainerDisplayName;@JsonKey(name: 'member_display_name') String get memberDisplayName;
+ String get id;@JsonKey(name: 'organization_id') String get organizationId;@JsonKey(name: 'branch_id') String get branchId;@JsonKey(name: 'trainer_id') String get trainerId;@JsonKey(name: 'trainer_user_id') String? get trainerUserId;@JsonKey(name: 'member_id') String get memberId;@JsonKey(name: 'starts_at') DateTime get startsAt;@JsonKey(name: 'ends_at') DateTime get endsAt;@JsonKey(name: 'credit_cost') int get creditCost; PtSessionStatus get status; String? get notes;@JsonKey(name: 'trainer_display_name') String get trainerDisplayName;@JsonKey(name: 'member_display_name') String get memberDisplayName;@JsonKey(name: 'member_code') String get memberCode;
 /// Create a copy of PtSessionModel
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -618,20 +618,20 @@ $PtSessionModelCopyWith<PtSessionModel> get copyWith => _$PtSessionModelCopyWith
 @override
 bool operator ==(Object other) {
   final _this = this as PtSessionModel;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is PtSessionModel&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.organizationId, _this.organizationId) || other.organizationId == _this.organizationId)&&(identical(other.branchId, _this.branchId) || other.branchId == _this.branchId)&&(identical(other.trainerId, _this.trainerId) || other.trainerId == _this.trainerId)&&(identical(other.memberId, _this.memberId) || other.memberId == _this.memberId)&&(identical(other.startsAt, _this.startsAt) || other.startsAt == _this.startsAt)&&(identical(other.endsAt, _this.endsAt) || other.endsAt == _this.endsAt)&&(identical(other.creditCost, _this.creditCost) || other.creditCost == _this.creditCost)&&(identical(other.status, _this.status) || other.status == _this.status)&&(identical(other.notes, _this.notes) || other.notes == _this.notes)&&(identical(other.trainerDisplayName, _this.trainerDisplayName) || other.trainerDisplayName == _this.trainerDisplayName)&&(identical(other.memberDisplayName, _this.memberDisplayName) || other.memberDisplayName == _this.memberDisplayName));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PtSessionModel&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.organizationId, _this.organizationId) || other.organizationId == _this.organizationId)&&(identical(other.branchId, _this.branchId) || other.branchId == _this.branchId)&&(identical(other.trainerId, _this.trainerId) || other.trainerId == _this.trainerId)&&(identical(other.trainerUserId, _this.trainerUserId) || other.trainerUserId == _this.trainerUserId)&&(identical(other.memberId, _this.memberId) || other.memberId == _this.memberId)&&(identical(other.startsAt, _this.startsAt) || other.startsAt == _this.startsAt)&&(identical(other.endsAt, _this.endsAt) || other.endsAt == _this.endsAt)&&(identical(other.creditCost, _this.creditCost) || other.creditCost == _this.creditCost)&&(identical(other.status, _this.status) || other.status == _this.status)&&(identical(other.notes, _this.notes) || other.notes == _this.notes)&&(identical(other.trainerDisplayName, _this.trainerDisplayName) || other.trainerDisplayName == _this.trainerDisplayName)&&(identical(other.memberDisplayName, _this.memberDisplayName) || other.memberDisplayName == _this.memberDisplayName)&&(identical(other.memberCode, _this.memberCode) || other.memberCode == _this.memberCode));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
   final _this = this as PtSessionModel;
-  return Object.hash(runtimeType,_this.id,_this.organizationId,_this.branchId,_this.trainerId,_this.memberId,_this.startsAt,_this.endsAt,_this.creditCost,_this.status,_this.notes,_this.trainerDisplayName,_this.memberDisplayName);
+  return Object.hash(runtimeType,_this.id,_this.organizationId,_this.branchId,_this.trainerId,_this.trainerUserId,_this.memberId,_this.startsAt,_this.endsAt,_this.creditCost,_this.status,_this.notes,_this.trainerDisplayName,_this.memberDisplayName,_this.memberCode);
 }
 
 @override
 String toString() {
   final _this = this as PtSessionModel;
-  return 'PtSessionModel(id: ${_this.id}, organizationId: ${_this.organizationId}, branchId: ${_this.branchId}, trainerId: ${_this.trainerId}, memberId: ${_this.memberId}, startsAt: ${_this.startsAt}, endsAt: ${_this.endsAt}, creditCost: ${_this.creditCost}, status: ${_this.status}, notes: ${_this.notes}, trainerDisplayName: ${_this.trainerDisplayName}, memberDisplayName: ${_this.memberDisplayName})';
+  return 'PtSessionModel(id: ${_this.id}, organizationId: ${_this.organizationId}, branchId: ${_this.branchId}, trainerId: ${_this.trainerId}, trainerUserId: ${_this.trainerUserId}, memberId: ${_this.memberId}, startsAt: ${_this.startsAt}, endsAt: ${_this.endsAt}, creditCost: ${_this.creditCost}, status: ${_this.status}, notes: ${_this.notes}, trainerDisplayName: ${_this.trainerDisplayName}, memberDisplayName: ${_this.memberDisplayName}, memberCode: ${_this.memberCode})';
 }
 
 
@@ -642,7 +642,7 @@ abstract mixin class $PtSessionModelCopyWith<$Res>  {
   factory $PtSessionModelCopyWith(PtSessionModel value, $Res Function(PtSessionModel) _then) = _$PtSessionModelCopyWithImpl;
 @useResult
 $Res call({
- String id,@JsonKey(name: 'organization_id') String organizationId,@JsonKey(name: 'branch_id') String branchId,@JsonKey(name: 'trainer_id') String trainerId,@JsonKey(name: 'member_id') String memberId,@JsonKey(name: 'starts_at') DateTime startsAt,@JsonKey(name: 'ends_at') DateTime endsAt,@JsonKey(name: 'credit_cost') int creditCost, PtSessionStatus status, String? notes,@JsonKey(name: 'trainer_display_name') String trainerDisplayName,@JsonKey(name: 'member_display_name') String memberDisplayName
+ String id,@JsonKey(name: 'organization_id') String organizationId,@JsonKey(name: 'branch_id') String branchId,@JsonKey(name: 'trainer_id') String trainerId,@JsonKey(name: 'trainer_user_id') String? trainerUserId,@JsonKey(name: 'member_id') String memberId,@JsonKey(name: 'starts_at') DateTime startsAt,@JsonKey(name: 'ends_at') DateTime endsAt,@JsonKey(name: 'credit_cost') int creditCost, PtSessionStatus status, String? notes,@JsonKey(name: 'trainer_display_name') String trainerDisplayName,@JsonKey(name: 'member_display_name') String memberDisplayName,@JsonKey(name: 'member_code') String memberCode
 });
 
 
@@ -659,13 +659,14 @@ class _$PtSessionModelCopyWithImpl<$Res>
 
 /// Create a copy of PtSessionModel
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? organizationId = null,Object? branchId = null,Object? trainerId = null,Object? memberId = null,Object? startsAt = null,Object? endsAt = null,Object? creditCost = null,Object? status = null,Object? notes = freezed,Object? trainerDisplayName = null,Object? memberDisplayName = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? organizationId = null,Object? branchId = null,Object? trainerId = null,Object? trainerUserId = freezed,Object? memberId = null,Object? startsAt = null,Object? endsAt = null,Object? creditCost = null,Object? status = null,Object? notes = freezed,Object? trainerDisplayName = null,Object? memberDisplayName = null,Object? memberCode = null,}) {
   return _then(PtSessionModel(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,organizationId: null == organizationId ? _self.organizationId : organizationId // ignore: cast_nullable_to_non_nullable
 as String,branchId: null == branchId ? _self.branchId : branchId // ignore: cast_nullable_to_non_nullable
 as String,trainerId: null == trainerId ? _self.trainerId : trainerId // ignore: cast_nullable_to_non_nullable
-as String,memberId: null == memberId ? _self.memberId : memberId // ignore: cast_nullable_to_non_nullable
+as String,trainerUserId: freezed == trainerUserId ? _self.trainerUserId : trainerUserId // ignore: cast_nullable_to_non_nullable
+as String?,memberId: null == memberId ? _self.memberId : memberId // ignore: cast_nullable_to_non_nullable
 as String,startsAt: null == startsAt ? _self.startsAt : startsAt // ignore: cast_nullable_to_non_nullable
 as DateTime,endsAt: null == endsAt ? _self.endsAt : endsAt // ignore: cast_nullable_to_non_nullable
 as DateTime,creditCost: null == creditCost ? _self.creditCost : creditCost // ignore: cast_nullable_to_non_nullable
@@ -673,6 +674,7 @@ as int,status: null == status ? _self.status : status // ignore: cast_nullable_t
 as PtSessionStatus,notes: freezed == notes ? _self.notes : notes // ignore: cast_nullable_to_non_nullable
 as String?,trainerDisplayName: null == trainerDisplayName ? _self.trainerDisplayName : trainerDisplayName // ignore: cast_nullable_to_non_nullable
 as String,memberDisplayName: null == memberDisplayName ? _self.memberDisplayName : memberDisplayName // ignore: cast_nullable_to_non_nullable
+as String,memberCode: null == memberCode ? _self.memberCode : memberCode // ignore: cast_nullable_to_non_nullable
 as String,
   ));
 }
@@ -758,10 +760,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id, @JsonKey(name: 'organization_id')  String organizationId, @JsonKey(name: 'branch_id')  String branchId, @JsonKey(name: 'trainer_id')  String trainerId, @JsonKey(name: 'member_id')  String memberId, @JsonKey(name: 'starts_at')  DateTime startsAt, @JsonKey(name: 'ends_at')  DateTime endsAt, @JsonKey(name: 'credit_cost')  int creditCost,  PtSessionStatus status,  String? notes, @JsonKey(name: 'trainer_display_name')  String trainerDisplayName, @JsonKey(name: 'member_display_name')  String memberDisplayName)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id, @JsonKey(name: 'organization_id')  String organizationId, @JsonKey(name: 'branch_id')  String branchId, @JsonKey(name: 'trainer_id')  String trainerId, @JsonKey(name: 'trainer_user_id')  String? trainerUserId, @JsonKey(name: 'member_id')  String memberId, @JsonKey(name: 'starts_at')  DateTime startsAt, @JsonKey(name: 'ends_at')  DateTime endsAt, @JsonKey(name: 'credit_cost')  int creditCost,  PtSessionStatus status,  String? notes, @JsonKey(name: 'trainer_display_name')  String trainerDisplayName, @JsonKey(name: 'member_display_name')  String memberDisplayName, @JsonKey(name: 'member_code')  String memberCode)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _PtSessionModel() when $default != null:
-return $default(_that.id,_that.organizationId,_that.branchId,_that.trainerId,_that.memberId,_that.startsAt,_that.endsAt,_that.creditCost,_that.status,_that.notes,_that.trainerDisplayName,_that.memberDisplayName);case _:
+return $default(_that.id,_that.organizationId,_that.branchId,_that.trainerId,_that.trainerUserId,_that.memberId,_that.startsAt,_that.endsAt,_that.creditCost,_that.status,_that.notes,_that.trainerDisplayName,_that.memberDisplayName,_that.memberCode);case _:
   return orElse();
 
 }
@@ -779,10 +781,10 @@ return $default(_that.id,_that.organizationId,_that.branchId,_that.trainerId,_th
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id, @JsonKey(name: 'organization_id')  String organizationId, @JsonKey(name: 'branch_id')  String branchId, @JsonKey(name: 'trainer_id')  String trainerId, @JsonKey(name: 'member_id')  String memberId, @JsonKey(name: 'starts_at')  DateTime startsAt, @JsonKey(name: 'ends_at')  DateTime endsAt, @JsonKey(name: 'credit_cost')  int creditCost,  PtSessionStatus status,  String? notes, @JsonKey(name: 'trainer_display_name')  String trainerDisplayName, @JsonKey(name: 'member_display_name')  String memberDisplayName)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id, @JsonKey(name: 'organization_id')  String organizationId, @JsonKey(name: 'branch_id')  String branchId, @JsonKey(name: 'trainer_id')  String trainerId, @JsonKey(name: 'trainer_user_id')  String? trainerUserId, @JsonKey(name: 'member_id')  String memberId, @JsonKey(name: 'starts_at')  DateTime startsAt, @JsonKey(name: 'ends_at')  DateTime endsAt, @JsonKey(name: 'credit_cost')  int creditCost,  PtSessionStatus status,  String? notes, @JsonKey(name: 'trainer_display_name')  String trainerDisplayName, @JsonKey(name: 'member_display_name')  String memberDisplayName, @JsonKey(name: 'member_code')  String memberCode)  $default,) {final _that = this;
 switch (_that) {
 case _PtSessionModel():
-return $default(_that.id,_that.organizationId,_that.branchId,_that.trainerId,_that.memberId,_that.startsAt,_that.endsAt,_that.creditCost,_that.status,_that.notes,_that.trainerDisplayName,_that.memberDisplayName);case _:
+return $default(_that.id,_that.organizationId,_that.branchId,_that.trainerId,_that.trainerUserId,_that.memberId,_that.startsAt,_that.endsAt,_that.creditCost,_that.status,_that.notes,_that.trainerDisplayName,_that.memberDisplayName,_that.memberCode);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -799,10 +801,10 @@ return $default(_that.id,_that.organizationId,_that.branchId,_that.trainerId,_th
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id, @JsonKey(name: 'organization_id')  String organizationId, @JsonKey(name: 'branch_id')  String branchId, @JsonKey(name: 'trainer_id')  String trainerId, @JsonKey(name: 'member_id')  String memberId, @JsonKey(name: 'starts_at')  DateTime startsAt, @JsonKey(name: 'ends_at')  DateTime endsAt, @JsonKey(name: 'credit_cost')  int creditCost,  PtSessionStatus status,  String? notes, @JsonKey(name: 'trainer_display_name')  String trainerDisplayName, @JsonKey(name: 'member_display_name')  String memberDisplayName)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id, @JsonKey(name: 'organization_id')  String organizationId, @JsonKey(name: 'branch_id')  String branchId, @JsonKey(name: 'trainer_id')  String trainerId, @JsonKey(name: 'trainer_user_id')  String? trainerUserId, @JsonKey(name: 'member_id')  String memberId, @JsonKey(name: 'starts_at')  DateTime startsAt, @JsonKey(name: 'ends_at')  DateTime endsAt, @JsonKey(name: 'credit_cost')  int creditCost,  PtSessionStatus status,  String? notes, @JsonKey(name: 'trainer_display_name')  String trainerDisplayName, @JsonKey(name: 'member_display_name')  String memberDisplayName, @JsonKey(name: 'member_code')  String memberCode)?  $default,) {final _that = this;
 switch (_that) {
 case _PtSessionModel() when $default != null:
-return $default(_that.id,_that.organizationId,_that.branchId,_that.trainerId,_that.memberId,_that.startsAt,_that.endsAt,_that.creditCost,_that.status,_that.notes,_that.trainerDisplayName,_that.memberDisplayName);case _:
+return $default(_that.id,_that.organizationId,_that.branchId,_that.trainerId,_that.trainerUserId,_that.memberId,_that.startsAt,_that.endsAt,_that.creditCost,_that.status,_that.notes,_that.trainerDisplayName,_that.memberDisplayName,_that.memberCode);case _:
   return null;
 
 }
@@ -814,13 +816,14 @@ return $default(_that.id,_that.organizationId,_that.branchId,_that.trainerId,_th
 @JsonSerializable()
 
 class _PtSessionModel implements PtSessionModel {
-  const _PtSessionModel({required this.id, @JsonKey(name: 'organization_id') required this.organizationId, @JsonKey(name: 'branch_id') required this.branchId, @JsonKey(name: 'trainer_id') required this.trainerId, @JsonKey(name: 'member_id') required this.memberId, @JsonKey(name: 'starts_at') required this.startsAt, @JsonKey(name: 'ends_at') required this.endsAt, @JsonKey(name: 'credit_cost') this.creditCost = 1, this.status = PtSessionStatus.scheduled, this.notes, @JsonKey(name: 'trainer_display_name') this.trainerDisplayName = '', @JsonKey(name: 'member_display_name') this.memberDisplayName = ''});
+  const _PtSessionModel({required this.id, @JsonKey(name: 'organization_id') required this.organizationId, @JsonKey(name: 'branch_id') required this.branchId, @JsonKey(name: 'trainer_id') required this.trainerId, @JsonKey(name: 'trainer_user_id') this.trainerUserId, @JsonKey(name: 'member_id') required this.memberId, @JsonKey(name: 'starts_at') required this.startsAt, @JsonKey(name: 'ends_at') required this.endsAt, @JsonKey(name: 'credit_cost') this.creditCost = 1, this.status = PtSessionStatus.scheduled, this.notes, @JsonKey(name: 'trainer_display_name') this.trainerDisplayName = '', @JsonKey(name: 'member_display_name') this.memberDisplayName = '', @JsonKey(name: 'member_code') this.memberCode = ''});
   factory _PtSessionModel.fromJson(Map<String, dynamic> json) => _$PtSessionModelFromJson(json);
 
 @override final  String id;
 @override@JsonKey(name: 'organization_id') final  String organizationId;
 @override@JsonKey(name: 'branch_id') final  String branchId;
 @override@JsonKey(name: 'trainer_id') final  String trainerId;
+@override@JsonKey(name: 'trainer_user_id') final  String? trainerUserId;
 @override@JsonKey(name: 'member_id') final  String memberId;
 @override@JsonKey(name: 'starts_at') final  DateTime startsAt;
 @override@JsonKey(name: 'ends_at') final  DateTime endsAt;
@@ -829,6 +832,7 @@ class _PtSessionModel implements PtSessionModel {
 @override final  String? notes;
 @override@JsonKey(name: 'trainer_display_name') final  String trainerDisplayName;
 @override@JsonKey(name: 'member_display_name') final  String memberDisplayName;
+@override@JsonKey(name: 'member_code') final  String memberCode;
 
 /// Create a copy of PtSessionModel
 /// with the given fields replaced by the non-null parameter values.
@@ -843,18 +847,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _PtSessionModel&&(identical(other.id, id) || other.id == id)&&(identical(other.organizationId, organizationId) || other.organizationId == organizationId)&&(identical(other.branchId, branchId) || other.branchId == branchId)&&(identical(other.trainerId, trainerId) || other.trainerId == trainerId)&&(identical(other.memberId, memberId) || other.memberId == memberId)&&(identical(other.startsAt, startsAt) || other.startsAt == startsAt)&&(identical(other.endsAt, endsAt) || other.endsAt == endsAt)&&(identical(other.creditCost, creditCost) || other.creditCost == creditCost)&&(identical(other.status, status) || other.status == status)&&(identical(other.notes, notes) || other.notes == notes)&&(identical(other.trainerDisplayName, trainerDisplayName) || other.trainerDisplayName == trainerDisplayName)&&(identical(other.memberDisplayName, memberDisplayName) || other.memberDisplayName == memberDisplayName));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _PtSessionModel&&(identical(other.id, id) || other.id == id)&&(identical(other.organizationId, organizationId) || other.organizationId == organizationId)&&(identical(other.branchId, branchId) || other.branchId == branchId)&&(identical(other.trainerId, trainerId) || other.trainerId == trainerId)&&(identical(other.trainerUserId, trainerUserId) || other.trainerUserId == trainerUserId)&&(identical(other.memberId, memberId) || other.memberId == memberId)&&(identical(other.startsAt, startsAt) || other.startsAt == startsAt)&&(identical(other.endsAt, endsAt) || other.endsAt == endsAt)&&(identical(other.creditCost, creditCost) || other.creditCost == creditCost)&&(identical(other.status, status) || other.status == status)&&(identical(other.notes, notes) || other.notes == notes)&&(identical(other.trainerDisplayName, trainerDisplayName) || other.trainerDisplayName == trainerDisplayName)&&(identical(other.memberDisplayName, memberDisplayName) || other.memberDisplayName == memberDisplayName)&&(identical(other.memberCode, memberCode) || other.memberCode == memberCode));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
-    return Object.hash(runtimeType,id,organizationId,branchId,trainerId,memberId,startsAt,endsAt,creditCost,status,notes,trainerDisplayName,memberDisplayName);
+    return Object.hash(runtimeType,id,organizationId,branchId,trainerId,trainerUserId,memberId,startsAt,endsAt,creditCost,status,notes,trainerDisplayName,memberDisplayName,memberCode);
 }
 
 @override
 String toString() {
-    return 'PtSessionModel(id: $id, organizationId: $organizationId, branchId: $branchId, trainerId: $trainerId, memberId: $memberId, startsAt: $startsAt, endsAt: $endsAt, creditCost: $creditCost, status: $status, notes: $notes, trainerDisplayName: $trainerDisplayName, memberDisplayName: $memberDisplayName)';
+    return 'PtSessionModel(id: $id, organizationId: $organizationId, branchId: $branchId, trainerId: $trainerId, trainerUserId: $trainerUserId, memberId: $memberId, startsAt: $startsAt, endsAt: $endsAt, creditCost: $creditCost, status: $status, notes: $notes, trainerDisplayName: $trainerDisplayName, memberDisplayName: $memberDisplayName, memberCode: $memberCode)';
 }
 
 
@@ -865,7 +869,7 @@ abstract mixin class _$PtSessionModelCopyWith<$Res> implements $PtSessionModelCo
   factory _$PtSessionModelCopyWith(_PtSessionModel value, $Res Function(_PtSessionModel) _then) = __$PtSessionModelCopyWithImpl;
 @override @useResult
 $Res call({
- String id,@JsonKey(name: 'organization_id') String organizationId,@JsonKey(name: 'branch_id') String branchId,@JsonKey(name: 'trainer_id') String trainerId,@JsonKey(name: 'member_id') String memberId,@JsonKey(name: 'starts_at') DateTime startsAt,@JsonKey(name: 'ends_at') DateTime endsAt,@JsonKey(name: 'credit_cost') int creditCost, PtSessionStatus status, String? notes,@JsonKey(name: 'trainer_display_name') String trainerDisplayName,@JsonKey(name: 'member_display_name') String memberDisplayName
+ String id,@JsonKey(name: 'organization_id') String organizationId,@JsonKey(name: 'branch_id') String branchId,@JsonKey(name: 'trainer_id') String trainerId,@JsonKey(name: 'trainer_user_id') String? trainerUserId,@JsonKey(name: 'member_id') String memberId,@JsonKey(name: 'starts_at') DateTime startsAt,@JsonKey(name: 'ends_at') DateTime endsAt,@JsonKey(name: 'credit_cost') int creditCost, PtSessionStatus status, String? notes,@JsonKey(name: 'trainer_display_name') String trainerDisplayName,@JsonKey(name: 'member_display_name') String memberDisplayName,@JsonKey(name: 'member_code') String memberCode
 });
 
 
@@ -882,13 +886,14 @@ class __$PtSessionModelCopyWithImpl<$Res>
 
 /// Create a copy of PtSessionModel
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? organizationId = null,Object? branchId = null,Object? trainerId = null,Object? memberId = null,Object? startsAt = null,Object? endsAt = null,Object? creditCost = null,Object? status = null,Object? notes = freezed,Object? trainerDisplayName = null,Object? memberDisplayName = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? organizationId = null,Object? branchId = null,Object? trainerId = null,Object? trainerUserId = freezed,Object? memberId = null,Object? startsAt = null,Object? endsAt = null,Object? creditCost = null,Object? status = null,Object? notes = freezed,Object? trainerDisplayName = null,Object? memberDisplayName = null,Object? memberCode = null,}) {
   return _then(_PtSessionModel(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,organizationId: null == organizationId ? _self.organizationId : organizationId // ignore: cast_nullable_to_non_nullable
 as String,branchId: null == branchId ? _self.branchId : branchId // ignore: cast_nullable_to_non_nullable
 as String,trainerId: null == trainerId ? _self.trainerId : trainerId // ignore: cast_nullable_to_non_nullable
-as String,memberId: null == memberId ? _self.memberId : memberId // ignore: cast_nullable_to_non_nullable
+as String,trainerUserId: freezed == trainerUserId ? _self.trainerUserId : trainerUserId // ignore: cast_nullable_to_non_nullable
+as String?,memberId: null == memberId ? _self.memberId : memberId // ignore: cast_nullable_to_non_nullable
 as String,startsAt: null == startsAt ? _self.startsAt : startsAt // ignore: cast_nullable_to_non_nullable
 as DateTime,endsAt: null == endsAt ? _self.endsAt : endsAt // ignore: cast_nullable_to_non_nullable
 as DateTime,creditCost: null == creditCost ? _self.creditCost : creditCost // ignore: cast_nullable_to_non_nullable
@@ -896,7 +901,293 @@ as int,status: null == status ? _self.status : status // ignore: cast_nullable_t
 as PtSessionStatus,notes: freezed == notes ? _self.notes : notes // ignore: cast_nullable_to_non_nullable
 as String?,trainerDisplayName: null == trainerDisplayName ? _self.trainerDisplayName : trainerDisplayName // ignore: cast_nullable_to_non_nullable
 as String,memberDisplayName: null == memberDisplayName ? _self.memberDisplayName : memberDisplayName // ignore: cast_nullable_to_non_nullable
+as String,memberCode: null == memberCode ? _self.memberCode : memberCode // ignore: cast_nullable_to_non_nullable
 as String,
+  ));
+}
+
+
+}
+
+
+/// @nodoc
+mixin _$PtClientLookup {
+
+ String get id;@JsonKey(name: 'member_code') String get memberCode;@JsonKey(name: 'full_name') String get fullName;@JsonKey(name: 'home_branch_id') String get homeBranchId; String get status;@JsonKey(name: 'available_pt_credits') int get availablePtCredits;
+/// Create a copy of PtClientLookup
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PtClientLookupCopyWith<PtClientLookup> get copyWith => _$PtClientLookupCopyWithImpl<PtClientLookup>(this as PtClientLookup, _$identity);
+
+  /// Serializes this PtClientLookup to a JSON map.
+  Map<String, dynamic> toJson();
+
+
+@override
+bool operator ==(Object other) {
+  final _this = this as PtClientLookup;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PtClientLookup&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.memberCode, _this.memberCode) || other.memberCode == _this.memberCode)&&(identical(other.fullName, _this.fullName) || other.fullName == _this.fullName)&&(identical(other.homeBranchId, _this.homeBranchId) || other.homeBranchId == _this.homeBranchId)&&(identical(other.status, _this.status) || other.status == _this.status)&&(identical(other.availablePtCredits, _this.availablePtCredits) || other.availablePtCredits == _this.availablePtCredits));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+  final _this = this as PtClientLookup;
+  return Object.hash(runtimeType,_this.id,_this.memberCode,_this.fullName,_this.homeBranchId,_this.status,_this.availablePtCredits);
+}
+
+@override
+String toString() {
+  final _this = this as PtClientLookup;
+  return 'PtClientLookup(id: ${_this.id}, memberCode: ${_this.memberCode}, fullName: ${_this.fullName}, homeBranchId: ${_this.homeBranchId}, status: ${_this.status}, availablePtCredits: ${_this.availablePtCredits})';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PtClientLookupCopyWith<$Res>  {
+  factory $PtClientLookupCopyWith(PtClientLookup value, $Res Function(PtClientLookup) _then) = _$PtClientLookupCopyWithImpl;
+@useResult
+$Res call({
+ String id,@JsonKey(name: 'member_code') String memberCode,@JsonKey(name: 'full_name') String fullName,@JsonKey(name: 'home_branch_id') String homeBranchId, String status,@JsonKey(name: 'available_pt_credits') int availablePtCredits
+});
+
+
+
+
+}
+/// @nodoc
+class _$PtClientLookupCopyWithImpl<$Res>
+    implements $PtClientLookupCopyWith<$Res> {
+  _$PtClientLookupCopyWithImpl(this._self, this._then);
+
+  final PtClientLookup _self;
+  final $Res Function(PtClientLookup) _then;
+
+/// Create a copy of PtClientLookup
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? memberCode = null,Object? fullName = null,Object? homeBranchId = null,Object? status = null,Object? availablePtCredits = null,}) {
+  return _then(PtClientLookup(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,memberCode: null == memberCode ? _self.memberCode : memberCode // ignore: cast_nullable_to_non_nullable
+as String,fullName: null == fullName ? _self.fullName : fullName // ignore: cast_nullable_to_non_nullable
+as String,homeBranchId: null == homeBranchId ? _self.homeBranchId : homeBranchId // ignore: cast_nullable_to_non_nullable
+as String,status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
+as String,availablePtCredits: null == availablePtCredits ? _self.availablePtCredits : availablePtCredits // ignore: cast_nullable_to_non_nullable
+as int,
+  ));
+}
+
+}
+
+
+/// Adds pattern-matching-related methods to [PtClientLookup].
+extension PtClientLookupPatterns on PtClientLookup {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>(TResult Function( _PtClientLookup value)?  $default,{required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case _PtClientLookup() when $default != null:
+return $default(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>(TResult Function( _PtClientLookup value)  $default,){
+final _that = this;
+switch (_that) {
+case _PtClientLookup():
+return $default(_that);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>(TResult? Function( _PtClientLookup value)?  $default,){
+final _that = this;
+switch (_that) {
+case _PtClientLookup() when $default != null:
+return $default(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id, @JsonKey(name: 'member_code')  String memberCode, @JsonKey(name: 'full_name')  String fullName, @JsonKey(name: 'home_branch_id')  String homeBranchId,  String status, @JsonKey(name: 'available_pt_credits')  int availablePtCredits)?  $default,{required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case _PtClientLookup() when $default != null:
+return $default(_that.id,_that.memberCode,_that.fullName,_that.homeBranchId,_that.status,_that.availablePtCredits);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id, @JsonKey(name: 'member_code')  String memberCode, @JsonKey(name: 'full_name')  String fullName, @JsonKey(name: 'home_branch_id')  String homeBranchId,  String status, @JsonKey(name: 'available_pt_credits')  int availablePtCredits)  $default,) {final _that = this;
+switch (_that) {
+case _PtClientLookup():
+return $default(_that.id,_that.memberCode,_that.fullName,_that.homeBranchId,_that.status,_that.availablePtCredits);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id, @JsonKey(name: 'member_code')  String memberCode, @JsonKey(name: 'full_name')  String fullName, @JsonKey(name: 'home_branch_id')  String homeBranchId,  String status, @JsonKey(name: 'available_pt_credits')  int availablePtCredits)?  $default,) {final _that = this;
+switch (_that) {
+case _PtClientLookup() when $default != null:
+return $default(_that.id,_that.memberCode,_that.fullName,_that.homeBranchId,_that.status,_that.availablePtCredits);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+@JsonSerializable()
+
+class _PtClientLookup implements PtClientLookup {
+  const _PtClientLookup({required this.id, @JsonKey(name: 'member_code') required this.memberCode, @JsonKey(name: 'full_name') required this.fullName, @JsonKey(name: 'home_branch_id') required this.homeBranchId, this.status = 'active', @JsonKey(name: 'available_pt_credits') this.availablePtCredits = 0});
+  factory _PtClientLookup.fromJson(Map<String, dynamic> json) => _$PtClientLookupFromJson(json);
+
+@override final  String id;
+@override@JsonKey(name: 'member_code') final  String memberCode;
+@override@JsonKey(name: 'full_name') final  String fullName;
+@override@JsonKey(name: 'home_branch_id') final  String homeBranchId;
+@override@JsonKey() final  String status;
+@override@JsonKey(name: 'available_pt_credits') final  int availablePtCredits;
+
+/// Create a copy of PtClientLookup
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+_$PtClientLookupCopyWith<_PtClientLookup> get copyWith => __$PtClientLookupCopyWithImpl<_PtClientLookup>(this, _$identity);
+
+@override
+Map<String, dynamic> toJson() {
+  return _$PtClientLookupToJson(this, );
+}
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _PtClientLookup&&(identical(other.id, id) || other.id == id)&&(identical(other.memberCode, memberCode) || other.memberCode == memberCode)&&(identical(other.fullName, fullName) || other.fullName == fullName)&&(identical(other.homeBranchId, homeBranchId) || other.homeBranchId == homeBranchId)&&(identical(other.status, status) || other.status == status)&&(identical(other.availablePtCredits, availablePtCredits) || other.availablePtCredits == availablePtCredits));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+    return Object.hash(runtimeType,id,memberCode,fullName,homeBranchId,status,availablePtCredits);
+}
+
+@override
+String toString() {
+    return 'PtClientLookup(id: $id, memberCode: $memberCode, fullName: $fullName, homeBranchId: $homeBranchId, status: $status, availablePtCredits: $availablePtCredits)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class _$PtClientLookupCopyWith<$Res> implements $PtClientLookupCopyWith<$Res> {
+  factory _$PtClientLookupCopyWith(_PtClientLookup value, $Res Function(_PtClientLookup) _then) = __$PtClientLookupCopyWithImpl;
+@override @useResult
+$Res call({
+ String id,@JsonKey(name: 'member_code') String memberCode,@JsonKey(name: 'full_name') String fullName,@JsonKey(name: 'home_branch_id') String homeBranchId, String status,@JsonKey(name: 'available_pt_credits') int availablePtCredits
+});
+
+
+
+
+}
+/// @nodoc
+class __$PtClientLookupCopyWithImpl<$Res>
+    implements _$PtClientLookupCopyWith<$Res> {
+  __$PtClientLookupCopyWithImpl(this._self, this._then);
+
+  final _PtClientLookup _self;
+  final $Res Function(_PtClientLookup) _then;
+
+/// Create a copy of PtClientLookup
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? memberCode = null,Object? fullName = null,Object? homeBranchId = null,Object? status = null,Object? availablePtCredits = null,}) {
+  return _then(_PtClientLookup(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,memberCode: null == memberCode ? _self.memberCode : memberCode // ignore: cast_nullable_to_non_nullable
+as String,fullName: null == fullName ? _self.fullName : fullName // ignore: cast_nullable_to_non_nullable
+as String,homeBranchId: null == homeBranchId ? _self.homeBranchId : homeBranchId // ignore: cast_nullable_to_non_nullable
+as String,status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
+as String,availablePtCredits: null == availablePtCredits ? _self.availablePtCredits : availablePtCredits // ignore: cast_nullable_to_non_nullable
+as int,
   ));
 }
 
@@ -1174,6 +1465,282 @@ class __$PtBookingOutcomeCopyWithImpl<$Res>
 ptSessionId: null == ptSessionId ? _self.ptSessionId : ptSessionId // ignore: cast_nullable_to_non_nullable
 as String,status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
 as PtSessionStatus,creditCost: null == creditCost ? _self.creditCost : creditCost // ignore: cast_nullable_to_non_nullable
+as int,idempotentReplay: null == idempotentReplay ? _self.idempotentReplay : idempotentReplay // ignore: cast_nullable_to_non_nullable
+as bool,
+  ));
+}
+
+
+}
+
+
+/// @nodoc
+mixin _$PtCancelOutcome {
+
+ PtSessionStatus get status;@JsonKey(name: 'refunded_credits') int get refundedCredits;@JsonKey(name: 'idempotent_replay') bool get idempotentReplay;
+/// Create a copy of PtCancelOutcome
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PtCancelOutcomeCopyWith<PtCancelOutcome> get copyWith => _$PtCancelOutcomeCopyWithImpl<PtCancelOutcome>(this as PtCancelOutcome, _$identity);
+
+  /// Serializes this PtCancelOutcome to a JSON map.
+  Map<String, dynamic> toJson();
+
+
+@override
+bool operator ==(Object other) {
+  final _this = this as PtCancelOutcome;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PtCancelOutcome&&(identical(other.status, _this.status) || other.status == _this.status)&&(identical(other.refundedCredits, _this.refundedCredits) || other.refundedCredits == _this.refundedCredits)&&(identical(other.idempotentReplay, _this.idempotentReplay) || other.idempotentReplay == _this.idempotentReplay));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+  final _this = this as PtCancelOutcome;
+  return Object.hash(runtimeType,_this.status,_this.refundedCredits,_this.idempotentReplay);
+}
+
+@override
+String toString() {
+  final _this = this as PtCancelOutcome;
+  return 'PtCancelOutcome(status: ${_this.status}, refundedCredits: ${_this.refundedCredits}, idempotentReplay: ${_this.idempotentReplay})';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PtCancelOutcomeCopyWith<$Res>  {
+  factory $PtCancelOutcomeCopyWith(PtCancelOutcome value, $Res Function(PtCancelOutcome) _then) = _$PtCancelOutcomeCopyWithImpl;
+@useResult
+$Res call({
+ PtSessionStatus status,@JsonKey(name: 'refunded_credits') int refundedCredits,@JsonKey(name: 'idempotent_replay') bool idempotentReplay
+});
+
+
+
+
+}
+/// @nodoc
+class _$PtCancelOutcomeCopyWithImpl<$Res>
+    implements $PtCancelOutcomeCopyWith<$Res> {
+  _$PtCancelOutcomeCopyWithImpl(this._self, this._then);
+
+  final PtCancelOutcome _self;
+  final $Res Function(PtCancelOutcome) _then;
+
+/// Create a copy of PtCancelOutcome
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') @override $Res call({Object? status = null,Object? refundedCredits = null,Object? idempotentReplay = null,}) {
+  return _then(PtCancelOutcome(
+status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
+as PtSessionStatus,refundedCredits: null == refundedCredits ? _self.refundedCredits : refundedCredits // ignore: cast_nullable_to_non_nullable
+as int,idempotentReplay: null == idempotentReplay ? _self.idempotentReplay : idempotentReplay // ignore: cast_nullable_to_non_nullable
+as bool,
+  ));
+}
+
+}
+
+
+/// Adds pattern-matching-related methods to [PtCancelOutcome].
+extension PtCancelOutcomePatterns on PtCancelOutcome {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>(TResult Function( _PtCancelOutcome value)?  $default,{required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case _PtCancelOutcome() when $default != null:
+return $default(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>(TResult Function( _PtCancelOutcome value)  $default,){
+final _that = this;
+switch (_that) {
+case _PtCancelOutcome():
+return $default(_that);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>(TResult? Function( _PtCancelOutcome value)?  $default,){
+final _that = this;
+switch (_that) {
+case _PtCancelOutcome() when $default != null:
+return $default(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( PtSessionStatus status, @JsonKey(name: 'refunded_credits')  int refundedCredits, @JsonKey(name: 'idempotent_replay')  bool idempotentReplay)?  $default,{required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case _PtCancelOutcome() when $default != null:
+return $default(_that.status,_that.refundedCredits,_that.idempotentReplay);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( PtSessionStatus status, @JsonKey(name: 'refunded_credits')  int refundedCredits, @JsonKey(name: 'idempotent_replay')  bool idempotentReplay)  $default,) {final _that = this;
+switch (_that) {
+case _PtCancelOutcome():
+return $default(_that.status,_that.refundedCredits,_that.idempotentReplay);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( PtSessionStatus status, @JsonKey(name: 'refunded_credits')  int refundedCredits, @JsonKey(name: 'idempotent_replay')  bool idempotentReplay)?  $default,) {final _that = this;
+switch (_that) {
+case _PtCancelOutcome() when $default != null:
+return $default(_that.status,_that.refundedCredits,_that.idempotentReplay);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+@JsonSerializable()
+
+class _PtCancelOutcome implements PtCancelOutcome {
+  const _PtCancelOutcome({this.status = PtSessionStatus.cancelledEarly, @JsonKey(name: 'refunded_credits') this.refundedCredits = 0, @JsonKey(name: 'idempotent_replay') this.idempotentReplay = false});
+  factory _PtCancelOutcome.fromJson(Map<String, dynamic> json) => _$PtCancelOutcomeFromJson(json);
+
+@override@JsonKey() final  PtSessionStatus status;
+@override@JsonKey(name: 'refunded_credits') final  int refundedCredits;
+@override@JsonKey(name: 'idempotent_replay') final  bool idempotentReplay;
+
+/// Create a copy of PtCancelOutcome
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+_$PtCancelOutcomeCopyWith<_PtCancelOutcome> get copyWith => __$PtCancelOutcomeCopyWithImpl<_PtCancelOutcome>(this, _$identity);
+
+@override
+Map<String, dynamic> toJson() {
+  return _$PtCancelOutcomeToJson(this, );
+}
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _PtCancelOutcome&&(identical(other.status, status) || other.status == status)&&(identical(other.refundedCredits, refundedCredits) || other.refundedCredits == refundedCredits)&&(identical(other.idempotentReplay, idempotentReplay) || other.idempotentReplay == idempotentReplay));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+    return Object.hash(runtimeType,status,refundedCredits,idempotentReplay);
+}
+
+@override
+String toString() {
+    return 'PtCancelOutcome(status: $status, refundedCredits: $refundedCredits, idempotentReplay: $idempotentReplay)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class _$PtCancelOutcomeCopyWith<$Res> implements $PtCancelOutcomeCopyWith<$Res> {
+  factory _$PtCancelOutcomeCopyWith(_PtCancelOutcome value, $Res Function(_PtCancelOutcome) _then) = __$PtCancelOutcomeCopyWithImpl;
+@override @useResult
+$Res call({
+ PtSessionStatus status,@JsonKey(name: 'refunded_credits') int refundedCredits,@JsonKey(name: 'idempotent_replay') bool idempotentReplay
+});
+
+
+
+
+}
+/// @nodoc
+class __$PtCancelOutcomeCopyWithImpl<$Res>
+    implements _$PtCancelOutcomeCopyWith<$Res> {
+  __$PtCancelOutcomeCopyWithImpl(this._self, this._then);
+
+  final _PtCancelOutcome _self;
+  final $Res Function(_PtCancelOutcome) _then;
+
+/// Create a copy of PtCancelOutcome
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? status = null,Object? refundedCredits = null,Object? idempotentReplay = null,}) {
+  return _then(_PtCancelOutcome(
+status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
+as PtSessionStatus,refundedCredits: null == refundedCredits ? _self.refundedCredits : refundedCredits // ignore: cast_nullable_to_non_nullable
 as int,idempotentReplay: null == idempotentReplay ? _self.idempotentReplay : idempotentReplay // ignore: cast_nullable_to_non_nullable
 as bool,
   ));

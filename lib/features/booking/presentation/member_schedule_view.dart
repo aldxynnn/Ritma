@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/state/ritma_sync.dart';
 import '../../../core/theme/ritma_spacing.dart';
+import '../../../core/utils/ritma_timezone.dart';
 import '../../../core/widgets/async_state_view.dart';
 import '../../../core/widgets/ritma_page_container.dart';
 import '../../../core/widgets/ritma_section_header.dart';
@@ -11,7 +12,6 @@ import '../../../core/widgets/ritma_status_pill.dart';
 import '../../auth/application/auth_providers.dart';
 import '../../organizations/application/organization_providers.dart';
 import '../../organizations/domain/branch_model.dart';
-import '../../packages/application/package_providers.dart';
 import '../application/booking_providers.dart';
 import '../domain/booking_models.dart';
 
@@ -49,9 +49,7 @@ class _MemberScheduleBrowseViewState
     setState(() => _bookingSessionId = null);
     res.when(
       success: (outcome) {
-        ref.invalidate(classSessionsProvider);
-        ref.invalidate(memberBookingsProvider);
-        ref.invalidate(memberWalletProvider(memberId));
+        RitmaSync.afterBookingMutation(ref, sessionId: session.id);
         final message = outcome.status == BookingStatus.waitlisted
             ? 'Added to waitlist (#${outcome.waitlistPosition ?? '-'}).'
             : 'Booking confirmed for ${session.title}.';
@@ -105,16 +103,36 @@ class _MemberScheduleBrowseViewState
               const SizedBox(height: RitmaSpacing.md),
               AsyncStateView<List<ClassSessionModel>>(
                 value: sessionsAsync,
-                isEmpty: (list) => list.isEmpty,
+                isEmpty: (list) {
+                  final now = DateTime.now().toUtc();
+                  return list
+                      .where(
+                        (s) =>
+                            s.status != SessionStatus.cancelled &&
+                            s.startsAt.toUtc().isAfter(now),
+                      )
+                      .isEmpty;
+                },
                 emptyTitle: 'No upcoming classes scheduled',
                 emptyMessage:
                     'Check back once instructors publish new classes.',
                 onRetry: () => ref.invalidate(classSessionsProvider),
                 data: (sessions) {
-                  final dayFmt = DateFormat.MMMEd();
-                  final timeFmt = DateFormat.jm();
+                  final orgTz = ref
+                      .watch(activeOrganizationProvider)
+                      .asData
+                      ?.value
+                      ?.timezone;
+                  final branchTzMap = <String, String?>{
+                    for (final b in branches) b.id: b.timezone ?? orgTz,
+                  };
+                  final now = DateTime.now().toUtc();
                   final active = sessions
-                      .where((s) => s.status != SessionStatus.cancelled)
+                      .where(
+                        (s) =>
+                            s.status != SessionStatus.cancelled &&
+                            s.startsAt.toUtc().isAfter(now),
+                      )
                       .toList();
                   return LayoutBuilder(
                     builder: (context, constraints) {
@@ -181,7 +199,7 @@ class _MemberScheduleBrowseViewState
                                     ),
                                     const SizedBox(height: RitmaSpacing.xxs),
                                     Text(
-                                      '${dayFmt.format(session.startsAt.toLocal())} • ${timeFmt.format(session.startsAt.toLocal())} – ${timeFmt.format(session.endsAt.toLocal())}'
+                                      '${RitmaTimezone.formatDateTime(session.startsAt, branchTzMap[session.branchId] ?? orgTz, includeZone: false)} – ${RitmaTimezone.formatTime(session.endsAt, branchTzMap[session.branchId] ?? orgTz, includeZone: true)}'
                                       '${session.instructorDisplayName.isNotEmpty ? ' • ${session.instructorDisplayName}' : ''}',
                                       style: Theme.of(context)
                                           .textTheme

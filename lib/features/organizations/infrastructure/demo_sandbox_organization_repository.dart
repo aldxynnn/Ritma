@@ -1,10 +1,15 @@
 import '../../../core/demo/demo_sandbox_engine.dart';
+import '../../../core/errors/app_failure.dart';
+import '../../../core/errors/error_mapper.dart';
 import '../../../core/repository/base_repository.dart';
 import '../../../core/result/result.dart';
+import '../domain/audit_log_model.dart';
 import '../domain/branch_model.dart';
 import '../domain/organization_invitation_result.dart';
+import '../domain/organization_model.dart';
 import '../domain/organization_repository.dart';
 import '../domain/room_model.dart';
+import '../domain/staff_management_models.dart';
 
 class DemoSandboxOrganizationRepository extends BaseRepository
     implements OrganizationRepository {
@@ -120,6 +125,177 @@ class DemoSandboxOrganizationRepository extends BaseRepository
         branchId: branchId,
       ),
       operation: 'demo.inviteStaff',
+    );
+  }
+
+  @override
+  Future<Result<OrganizationModel>> fetchOrganization(String orgId) {
+    return guard(() async {
+      final org = _engine.organizations[orgId];
+      if (org == null) {
+        throw const AppException(
+          AppFailure.notFound(message: 'Organization not found.'),
+        );
+      }
+      return org;
+    }, operation: 'demo.fetchOrganization');
+  }
+
+  @override
+  Future<Result<void>> updateOrganizationSettings({
+    required String orgId,
+    required String name,
+    required String businessType,
+    required String timezone,
+    required String currencyCode,
+  }) {
+    return guard(
+      () async => _engine.updateOrganizationSettings(
+        orgId: orgId,
+        name: name,
+        businessType: businessType,
+        timezone: timezone,
+        currencyCode: currencyCode,
+      ),
+      operation: 'demo.updateOrganizationSettings',
+    );
+  }
+
+  @override
+  Future<Result<void>> rotateOrgSigningKey(String orgId) {
+    return guard(
+      () async => _engine.rotateOrgSigningKey(orgId),
+      operation: 'demo.rotateOrgSigningKey',
+    );
+  }
+
+  @override
+  Future<Result<BranchModel>> updateBranch({
+    required String orgId,
+    required String branchId,
+    required String name,
+    required String code,
+    String? address,
+    String? timezone,
+    required bool isActive,
+  }) {
+    return guard(
+      () async => _engine.updateBranch(
+        orgId: orgId,
+        branchId: branchId,
+        name: name,
+        code: code,
+        address: address,
+        timezone: timezone,
+        isActive: isActive,
+      ),
+      operation: 'demo.updateBranch',
+    );
+  }
+
+  @override
+  Future<Result<RoomModel>> updateRoom({
+    required String orgId,
+    required String roomId,
+    required String name,
+    required String roomType,
+    required int defaultCapacity,
+    required bool isActive,
+  }) {
+    return guard(
+      () async => _engine.updateRoom(
+        orgId: orgId,
+        roomId: roomId,
+        name: name,
+        roomType: roomType,
+        defaultCapacity: defaultCapacity,
+        isActive: isActive,
+      ),
+      operation: 'demo.updateRoom',
+    );
+  }
+
+  @override
+  Future<Result<List<StaffAssignmentModel>>> fetchOrganizationStaff({
+    required String orgId,
+    String? branchId,
+  }) {
+    return guard(
+      () async =>
+          _engine.fetchOrganizationStaff(orgId: orgId, branchId: branchId),
+      operation: 'demo.fetchOrganizationStaff',
+    );
+  }
+
+  @override
+  Future<Result<void>> assignUserRole({
+    required String orgId,
+    required String targetUserId,
+    required String roleCode,
+    String? branchId,
+  }) {
+    return guard(
+      () async => _engine.assignUserRole(
+        orgId: orgId,
+        targetUserId: targetUserId,
+        roleCode: roleCode,
+        branchId: branchId,
+      ),
+      operation: 'demo.assignUserRole',
+    );
+  }
+
+  @override
+  Future<Result<void>> revokeUserRole({
+    required String orgId,
+    required String assignmentId,
+  }) {
+    return guard(
+      () async =>
+          _engine.revokeUserRole(orgId: orgId, assignmentId: assignmentId),
+      operation: 'demo.revokeUserRole',
+    );
+  }
+
+  @override
+  Future<Result<List<OrganizationInvitationModel>>>
+  fetchOrganizationInvitations({required String orgId, String? branchId}) {
+    return guard(
+      () async => _engine.fetchOrganizationInvitations(
+        orgId: orgId,
+        branchId: branchId,
+      ),
+      operation: 'demo.fetchOrganizationInvitations',
+    );
+  }
+
+  @override
+  Future<Result<void>> revokeOrganizationInvitation({
+    required String orgId,
+    required String invitationId,
+  }) {
+    return guard(
+      () async => _engine.revokeOrganizationInvitation(
+        orgId: orgId,
+        invitationId: invitationId,
+      ),
+      operation: 'demo.revokeOrganizationInvitation',
+    );
+  }
+
+  @override
+  Future<Result<List<AuditLogModel>>> fetchAuditLogs({
+    required String orgId,
+    String? branchId,
+    int limit = 50,
+  }) {
+    return guard(
+      () async => _engine.fetchAuditLogs(
+        orgId: orgId,
+        branchId: branchId,
+        limit: limit,
+      ),
+      operation: 'demo.fetchAuditLogs',
     );
   }
 }

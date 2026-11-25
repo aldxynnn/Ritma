@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/state/ritma_sync.dart';
 import '../../../core/theme/ritma_spacing.dart';
 import '../../../core/widgets/async_state_view.dart';
 import '../../../core/widgets/ritma_metric_tile.dart';
@@ -134,9 +135,11 @@ class MemberEntitlementsPanel extends ConsumerWidget {
                                 return;
                               }
                               res.when(
-                                success: (_) => ref.invalidate(
-                                  memberWalletProvider(memberId),
-                                ),
+                                success: (_) =>
+                                    RitmaSync.afterPackageOrPaymentMutation(
+                                      ref,
+                                      memberId: memberId,
+                                    ),
                                 failure: (f) => ScaffoldMessenger.of(context)
                                     .showSnackBar(
                                       SnackBar(content: Text(f.message)),
@@ -273,7 +276,7 @@ class _AdjustCreditsDialogState extends ConsumerState<_AdjustCreditsDialog> {
     setState(() => _saving = false);
     res.when(
       success: (_) {
-        ref.invalidate(memberWalletProvider(widget.memberId));
+        RitmaSync.afterPackageOrPaymentMutation(ref, memberId: widget.memberId);
         Navigator.of(context).pop(
           'Adjusted ${_creditType.label} by ${delta > 0 ? '+' : ''}$delta.',
         );

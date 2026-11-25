@@ -22,6 +22,17 @@ abstract interface class PackageEntitlementRepository {
     required List<CreatePackageRuleInput> rules,
   });
 
+  Future<Result<void>> updatePackageDetails({
+    required String orgId,
+    required String packageId,
+    required String name,
+    String description = '',
+    int? priceMinor,
+    required bool isActive,
+    BranchAccessScope? branchAccessScope,
+    List<String>? allowedBranchIds,
+  });
+
   Future<Result<MemberWalletSnapshot>> fetchMemberWallet({
     required String orgId,
     required String memberId,

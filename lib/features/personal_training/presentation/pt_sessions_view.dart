@@ -1,19 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/state/ritma_sync.dart';
 import '../../../core/theme/ritma_spacing.dart';
+import '../../../core/utils/ritma_timezone.dart';
 import '../../../core/widgets/async_state_view.dart';
 import '../../../core/widgets/ritma_page_container.dart';
 import '../../../core/widgets/ritma_section_header.dart';
 import '../../../core/widgets/ritma_status_pill.dart';
 import '../../auth/application/auth_providers.dart';
-import '../../members/application/member_providers.dart';
-import '../../members/domain/member_model.dart';
+import '../../auth/domain/auth_session_state.dart';
 import '../../organizations/application/organization_providers.dart';
 import '../../organizations/domain/branch_model.dart';
-import '../../packages/application/package_providers.dart';
 import '../application/pt_providers.dart';
 import '../domain/pt_models.dart';
 
@@ -27,13 +26,28 @@ class PtSessionsView extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
+    final authState = ref.watch(authControllerProvider).asData?.value;
+    final currentUserId = switch (authState) {
+      AuthenticatedSession(:final user) => user.id,
+      _ => null,
+    };
+
     final trainersAsync = ref.watch(orgTrainersProvider);
     final sessionsAsync = ref.watch(ptSessionsProvider);
+    final orgTz = ref.watch(activeOrganizationProvider).asData?.value?.timezone;
+    final branches =
+        ref.watch(orgBranchesProvider).asData?.value ?? const <BranchModel>[];
+    final branchTzMap = <String, String?>{
+      for (final b in branches) b.id: b.timezone ?? orgTz,
+    };
+
+    final isPersonalTrainer = workspace.roleCode == 'personal_trainer';
     final canManagePt = ref.watch(hasPermissionProvider('pt.manage'));
-    final canBookPt =
-        workspace.memberId != null ||
-        canManagePt ||
+    final canManageOpsSchedule =
+        ref.watch(hasPermissionProvider('schedule.manage')) ||
         ref.watch(hasPermissionProvider('booking.manage'));
+    final canBookPt =
+        workspace.memberId != null || canManagePt || canManageOpsSchedule;
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -59,7 +73,7 @@ class PtSessionsView extends ConsumerWidget {
                             builder: (_) => const _BookPtSessionDialog(),
                           );
                           if (booked == true) {
-                            ref.invalidate(ptSessionsProvider);
+                            RitmaSync.afterPtMutation(ref);
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
@@ -124,6 +138,9 @@ class PtSessionsView extends ConsumerWidget {
               const SizedBox(height: RitmaSpacing.lg),
               RitmaSectionHeader(
                 title: 'Scheduled & Completed Sessions',
+                subtitle: isPersonalTrainer
+                    ? 'Scoped strictly to your assigned coaching sessions'
+                    : null,
                 trailing: IconButton(
                   tooltip: 'Refresh PT sessions',
                   onPressed: () => ref.invalidate(ptSessionsProvider),
@@ -139,9 +156,19 @@ class PtSessionsView extends ConsumerWidget {
                     'Book a 1-on-1 training slot using active PT Credits.',
                 onRetry: () => ref.invalidate(ptSessionsProvider),
                 data: (sessions) {
-                  final timeFmt = DateFormat.MMMEd().add_jm();
+                  final scopedSessions =
+                      isPersonalTrainer && currentUserId != null
+                      ? sessions
+                            .where(
+                              (s) =>
+                                  s.trainerUserId == null ||
+                                  s.trainerUserId == currentUserId,
+                            )
+                            .toList()
+                      : sessions;
+
                   return Column(
-                    children: sessions.map((session) {
+                    children: scopedSessions.map((session) {
                       final tone = switch (session.status) {
                         PtSessionStatus.scheduled => RitmaPillTone.lime,
                         PtSessionStatus.completed => RitmaPillTone.success,
@@ -151,10 +178,32 @@ class PtSessionsView extends ConsumerWidget {
                       };
                       final trainerLabel = session.trainerDisplayName.isNotEmpty
                           ? session.trainerDisplayName
-                          : 'Trainer ${session.trainerId.substring(0, 8)}';
+                          : 'Trainer';
                       final memberLabel = session.memberDisplayName.isNotEmpty
-                          ? session.memberDisplayName
-                          : 'Member ${session.memberId.substring(0, 8)}';
+                          ? (session.memberCode.isNotEmpty
+                                ? '${session.memberDisplayName} (${session.memberCode})'
+                                : session.memberDisplayName)
+                          : (session.memberCode.isNotEmpty
+                                ? session.memberCode
+                                : 'Member');
+
+                      final isOwnTrainerSession =
+                          currentUserId != null &&
+                          session.trainerUserId == currentUserId;
+                      final canActComplete =
+                          session.status == PtSessionStatus.scheduled &&
+                          (ref.watch(
+                                hasPermissionProvider('schedule.manage'),
+                              ) ||
+                              (canManagePt &&
+                                  (!isPersonalTrainer || isOwnTrainerSession)));
+                      final canActCancel =
+                          session.status == PtSessionStatus.scheduled &&
+                          (canActComplete ||
+                              canManageOpsSchedule ||
+                              workspace.memberId == session.memberId);
+
+                      final tz = branchTzMap[session.branchId] ?? orgTz;
 
                       return Padding(
                         padding: const EdgeInsets.only(bottom: RitmaSpacing.sm),
@@ -186,7 +235,7 @@ class PtSessionsView extends ConsumerWidget {
                                 ),
                                 const SizedBox(height: RitmaSpacing.xxs),
                                 Text(
-                                  '${timeFmt.format(session.startsAt.toLocal())} – ${DateFormat.jm().format(session.endsAt.toLocal())}',
+                                  '${RitmaTimezone.formatDateTime(session.startsAt, tz, includeZone: false)} – ${RitmaTimezone.formatTime(session.endsAt, tz, includeZone: true)}',
                                   style: Theme.of(context).textTheme.bodySmall,
                                 ),
                                 if (session.notes != null &&
@@ -199,25 +248,41 @@ class PtSessionsView extends ConsumerWidget {
                                         .bodySmall,
                                   ),
                                 ],
-                                if (canManagePt &&
-                                    session.status ==
-                                        PtSessionStatus.scheduled) ...[
+                                if (canActComplete || canActCancel) ...[
                                   const SizedBox(height: RitmaSpacing.sm),
-                                  Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: OutlinedButton.icon(
-                                      onPressed: () => _completeSession(
-                                        context,
-                                        ref,
-                                        orgId: workspace.organizationId,
-                                        session: session,
-                                      ),
-                                      icon: const Icon(
-                                        Icons.check_circle_outline,
-                                        size: 18,
-                                      ),
-                                      label: const Text('Complete Session'),
-                                    ),
+                                  Wrap(
+                                    spacing: RitmaSpacing.xs,
+                                    runSpacing: RitmaSpacing.xs,
+                                    children: [
+                                      if (canActComplete)
+                                        OutlinedButton.icon(
+                                          onPressed: () => _completeSession(
+                                            context,
+                                            ref,
+                                            orgId: workspace.organizationId,
+                                            session: session,
+                                          ),
+                                          icon: const Icon(
+                                            Icons.check_circle_outline,
+                                            size: 18,
+                                          ),
+                                          label: const Text('Complete Session'),
+                                        ),
+                                      if (canActCancel)
+                                        TextButton.icon(
+                                          onPressed: () => _cancelSession(
+                                            context,
+                                            ref,
+                                            orgId: workspace.organizationId,
+                                            session: session,
+                                          ),
+                                          icon: const Icon(
+                                            Icons.cancel_outlined,
+                                            size: 18,
+                                          ),
+                                          label: const Text('Cancel Session'),
+                                        ),
+                                    ],
                                   ),
                                 ],
                               ],
@@ -264,10 +329,51 @@ class PtSessionsView extends ConsumerWidget {
     }
     res.when(
       success: (_) {
-        ref.invalidate(ptSessionsProvider);
+        RitmaSync.afterPtMutation(ref);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('PT session marked completed.')),
         );
+      },
+      failure: (failure) =>
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(failure.message))),
+    );
+  }
+
+  Future<void> _cancelSession(
+    BuildContext context,
+    WidgetRef ref, {
+    required String orgId,
+    required PtSessionModel session,
+  }) async {
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (_) => const _CancelPtSessionDialog(),
+    );
+    if (reason == null || !context.mounted) {
+      return;
+    }
+
+    final repo = ref.read(ptRepositoryProvider);
+    if (repo == null) {
+      return;
+    }
+    final res = await repo.cancelPtSession(
+      orgId: orgId,
+      ptSessionId: session.id,
+      reason: reason.trim().isEmpty ? null : reason.trim(),
+    );
+    if (!context.mounted) {
+      return;
+    }
+    res.when(
+      success: (outcome) {
+        RitmaSync.afterPtMutation(ref);
+        final msg = outcome.refundedCredits > 0
+            ? 'PT session cancelled. Refunded ${outcome.refundedCredits} PT credit(s).'
+            : 'PT session cancelled.';
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(msg)));
       },
       failure: (failure) =>
           ScaffoldMessenger.of(context)
@@ -319,6 +425,48 @@ class _CompletePtSessionDialogState extends State<_CompletePtSessionDialog> {
   }
 }
 
+class _CancelPtSessionDialog extends StatefulWidget {
+  const _CancelPtSessionDialog();
+
+  @override
+  State<_CancelPtSessionDialog> createState() => _CancelPtSessionDialogState();
+}
+
+class _CancelPtSessionDialogState extends State<_CancelPtSessionDialog> {
+  final _reasonCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _reasonCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Cancel PT Session?'),
+      content: TextField(
+        controller: _reasonCtrl,
+        decoration: const InputDecoration(
+          labelText: 'Cancellation Reason (optional)',
+          hintText: 'Client rescheduled, illness, coach unavailable',
+        ),
+        maxLines: 2,
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Keep'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_reasonCtrl.text),
+          child: const Text('Confirm Cancel'),
+        ),
+      ],
+    );
+  }
+}
+
 class _BookPtSessionDialog extends ConsumerStatefulWidget {
   const _BookPtSessionDialog();
 
@@ -328,16 +476,49 @@ class _BookPtSessionDialog extends ConsumerStatefulWidget {
 }
 
 class _BookPtSessionDialogState extends ConsumerState<_BookPtSessionDialog> {
+  final _searchCtrl = TextEditingController();
   String? _trainerId;
   String? _memberId;
-  int _dayOffset = 1;
+  String _clientQuery = '';
+  DateTime? _selectedWallDate;
   int _hourBranchLocal = 10;
   bool _saving = false;
   String? _inlineError;
 
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDate(String? timezone) async {
+    final today = RitmaTimezone.orgToday(timezone);
+    final initial = _selectedWallDate ?? today.add(const Duration(days: 1));
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime(initial.year, initial.month, initial.day),
+      firstDate: DateTime(today.year, today.month, today.day),
+      lastDate: DateTime(
+        today.year,
+        today.month,
+        today.day,
+      ).add(const Duration(days: 60)),
+    );
+    if (picked != null && mounted) {
+      setState(
+        () => _selectedWallDate = DateTime.utc(
+          picked.year,
+          picked.month,
+          picked.day,
+        ),
+      );
+    }
+  }
+
   Future<void> _submit(
     List<TrainerProfileModel> trainers,
     List<BranchModel> branches,
+    String? orgTimezone,
   ) async {
     final workspace = ref.read(activeWorkspaceProvider);
     final repo = ref.read(ptRepositoryProvider);
@@ -360,26 +541,28 @@ class _BookPtSessionDialogState extends ConsumerState<_BookPtSessionDialog> {
       return;
     }
 
+    final branchTz =
+        branches
+            .where((b) => b.id == trainer.homeBranchId)
+            .firstOrNull
+            ?.timezone ??
+        orgTimezone;
+    final wallDate =
+        _selectedWallDate ??
+        RitmaTimezone.orgToday(branchTz).add(const Duration(days: 1));
+    final startsAt = RitmaTimezone.fromOrgWallClock(
+      year: wallDate.year,
+      month: wallDate.month,
+      day: wallDate.day,
+      hour: _hourBranchLocal,
+      timezone: branchTz,
+    );
+    final endsAt = startsAt.add(const Duration(hours: 1));
+
     setState(() {
       _saving = true;
       _inlineError = null;
     });
-    final branchTz = branches
-        .where((b) => b.id == trainer.homeBranchId)
-        .firstOrNull
-        ?.timezone;
-    final tzOffset = branchTz == 'Asia/Jakarta'
-        ? const Duration(hours: 7)
-        : Duration.zero;
-    final targetDay = DateTime.now().toUtc().add(Duration(days: _dayOffset));
-    final startsAt = DateTime.utc(
-      targetDay.year,
-      targetDay.month,
-      targetDay.day,
-      _hourBranchLocal,
-      0,
-    ).subtract(tzOffset);
-    final endsAt = startsAt.add(const Duration(hours: 1));
 
     final res = await repo.bookPtSession(
       orgId: workspace.organizationId,
@@ -397,7 +580,7 @@ class _BookPtSessionDialogState extends ConsumerState<_BookPtSessionDialog> {
     setState(() => _saving = false);
     res.when(
       success: (_) {
-        ref.invalidate(memberWalletProvider(memberId));
+        RitmaSync.afterPtMutation(ref);
         Navigator.of(context).pop(true);
       },
       failure: (failure) => setState(() => _inlineError = failure.message),
@@ -407,25 +590,80 @@ class _BookPtSessionDialogState extends ConsumerState<_BookPtSessionDialog> {
   @override
   Widget build(BuildContext context) {
     final workspace = ref.watch(activeWorkspaceProvider);
+    final authState = ref.watch(authControllerProvider).asData?.value;
+    final currentUserId = switch (authState) {
+      AuthenticatedSession(:final user) => user.id,
+      _ => null,
+    };
     final trainersAsync = ref.watch(orgTrainersProvider);
     final trainers =
         trainersAsync.asData?.value ?? const <TrainerProfileModel>[];
     final branches =
         ref.watch(orgBranchesProvider).asData?.value ?? const <BranchModel>[];
-    final members = workspace?.isOperationsSurface == true
-        ? (ref.watch(membersListProvider).asData?.value ??
-              const <MemberModel>[])
-        : const <MemberModel>[];
+    final orgTz = ref.watch(activeOrganizationProvider).asData?.value?.timezone;
 
-    _trainerId ??= trainers.firstOrNull?.id;
-    if (workspace?.isOperationsSurface == true) {
-      _memberId ??= members.firstOrNull?.id;
+    final isPersonalTrainer = workspace?.roleCode == 'personal_trainer';
+    final ownTrainer = isPersonalTrainer && currentUserId != null
+        ? trainers.where((t) => t.userId == currentUserId).firstOrNull
+        : null;
+
+    if (isPersonalTrainer) {
+      _trainerId = ownTrainer?.id;
+    } else {
+      _trainerId ??= trainers.firstOrNull?.id;
     }
+
+    final selectedTrainer = trainers
+        .where((t) => t.id == _trainerId)
+        .firstOrNull;
+    final selectedBranchTz = selectedTrainer != null
+        ? (branches
+                  .where((b) => b.id == selectedTrainer.homeBranchId)
+                  .firstOrNull
+                  ?.timezone ??
+              orgTz)
+        : orgTz;
+
+    _selectedWallDate ??= RitmaTimezone.orgToday(selectedBranchTz)
+        .add(const Duration(days: 1));
+
+    final clientLookupAsync =
+        (workspace?.isOperationsSurface == true && selectedTrainer != null)
+        ? ref.watch(
+            ptClientLookupProvider((
+              branchId: selectedTrainer.homeBranchId,
+              query: _clientQuery,
+            )),
+          )
+        : const AsyncData<List<PtClientLookup>>(<PtClientLookup>[]);
+    final clients = clientLookupAsync.asData?.value ?? const <PtClientLookup>[];
+    if (workspace?.isOperationsSurface == true && clients.isNotEmpty) {
+      if (_memberId == null || !clients.any((c) => c.id == _memberId)) {
+        _memberId = clients.first.id;
+      }
+    }
+
+    const slotHours = <int>[
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+    ];
 
     return AlertDialog(
       title: const Text('Book Personal Training'),
       content: SizedBox(
-        width: 420,
+        width: 440,
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -453,8 +691,21 @@ class _BookPtSessionDialogState extends ConsumerState<_BookPtSessionDialog> {
               if (trainersAsync.isLoading) ...[
                 const LinearProgressIndicator(),
                 const SizedBox(height: RitmaSpacing.sm),
-              ] else if (trainers.isEmpty)
+              ] else if (isPersonalTrainer && ownTrainer == null)
+                const Text(
+                  'No active trainer profile is linked to your account yet. Contact a branch manager.',
+                )
+              else if (trainers.isEmpty)
                 const Text('No active trainers available.')
+              else if (isPersonalTrainer && ownTrainer != null)
+                InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'Trainer (Self)',
+                  ),
+                  child: Text(
+                    '${ownTrainer.displayName} (${ownTrainer.defaultCreditCost} PT credit)',
+                  ),
+                )
               else
                 DropdownButtonFormField<String>(
                   initialValue: _trainerId,
@@ -473,63 +724,76 @@ class _BookPtSessionDialogState extends ConsumerState<_BookPtSessionDialog> {
                         ),
                       )
                       .toList(),
-                  onChanged: (v) => setState(() => _trainerId = v),
+                  onChanged: (v) => setState(() {
+                    _trainerId = v;
+                    _memberId = null;
+                  }),
                 ),
               if (workspace?.isOperationsSurface == true &&
-                  members.isNotEmpty) ...[
+                  selectedTrainer != null) ...[
                 const SizedBox(height: RitmaSpacing.xs),
-                DropdownButtonFormField<String>(
-                  initialValue: _memberId,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'Member'),
-                  items: members
-                      .map(
-                        (m) => DropdownMenuItem<String>(
-                          value: m.id,
-                          child: Text(
-                            '${m.fullName} (${m.memberCode})',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (v) => setState(() => _memberId = v),
+                TextField(
+                  controller: _searchCtrl,
+                  decoration: InputDecoration(
+                    labelText: 'Search Member (name or code)',
+                    isDense: true,
+                    suffixIcon: IconButton(
+                      tooltip: 'Filter clients',
+                      icon: const Icon(Icons.search, size: 18),
+                      onPressed: () => setState(
+                        () => _clientQuery = _searchCtrl.text.trim(),
+                      ),
+                    ),
+                  ),
+                  onChanged: (val) => setState(() => _clientQuery = val.trim()),
                 ),
+                const SizedBox(height: RitmaSpacing.xs),
+                if (clientLookupAsync.isLoading)
+                  const LinearProgressIndicator()
+                else if (clients.isEmpty)
+                  Text(
+                    'No active clients match filter.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  )
+                else
+                  DropdownButtonFormField<String>(
+                    key: ValueKey('pt-member-${_memberId ?? ''}'),
+                    initialValue: _memberId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'Member'),
+                    items: clients
+                        .map(
+                          (m) => DropdownMenuItem<String>(
+                            value: m.id,
+                            child: Text(
+                              '${m.fullName} (${m.memberCode}) • ${m.availablePtCredits} PT cr',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) => setState(() => _memberId = v),
+                  ),
               ],
-              const SizedBox(height: RitmaSpacing.xs),
+              const SizedBox(height: RitmaSpacing.sm),
               Row(
                 children: [
                   Expanded(
-                    child: DropdownButtonFormField<int>(
-                      initialValue: _dayOffset,
-                      isExpanded: true,
-                      decoration: const InputDecoration(labelText: 'Day'),
-                      items: const [
-                        DropdownMenuItem<int>(
-                          value: 1,
-                          child: Text(
-                            'Tomorrow',
-                            overflow: TextOverflow.ellipsis,
+                    child: InkWell(
+                      onTap: _saving ? null : () => _pickDate(selectedBranchTz),
+                      child: InputDecorator(
+                        decoration: InputDecoration(
+                          labelText:
+                              'Date (${RitmaTimezone.shortLabel(selectedBranchTz)})',
+                          suffixIcon: const Icon(
+                            Icons.calendar_today,
+                            size: 18,
                           ),
                         ),
-                        DropdownMenuItem<int>(
-                          value: 2,
-                          child: Text(
-                            'In 2 Days',
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                        child: Text(
+                          RitmaTimezone.formatDate(_selectedWallDate!, 'UTC'),
                         ),
-                        DropdownMenuItem<int>(
-                          value: 3,
-                          child: Text(
-                            'In 3 Days',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                      onChanged: (v) {
-                        if (v != null) setState(() => _dayOffset = v);
-                      },
+                      ),
                     ),
                   ),
                   const SizedBox(width: RitmaSpacing.xs),
@@ -537,15 +801,18 @@ class _BookPtSessionDialogState extends ConsumerState<_BookPtSessionDialog> {
                     child: DropdownButtonFormField<int>(
                       initialValue: _hourBranchLocal,
                       isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Start Time',
+                      decoration: InputDecoration(
+                        labelText:
+                            'Start (${RitmaTimezone.shortLabel(selectedBranchTz)})',
                       ),
-                      items: const [
-                        DropdownMenuItem<int>(value: 9, child: Text('09:00')),
-                        DropdownMenuItem<int>(value: 10, child: Text('10:00')),
-                        DropdownMenuItem<int>(value: 14, child: Text('14:00')),
-                        DropdownMenuItem<int>(value: 17, child: Text('17:00')),
-                      ],
+                      items: slotHours
+                          .map(
+                            (h) => DropdownMenuItem<int>(
+                              value: h,
+                              child: Text('${h.toString().padLeft(2, '0')}:00'),
+                            ),
+                          )
+                          .toList(),
                       onChanged: (v) {
                         if (v != null) setState(() => _hourBranchLocal = v);
                       },
@@ -563,9 +830,9 @@ class _BookPtSessionDialogState extends ConsumerState<_BookPtSessionDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: (_saving || trainers.isEmpty)
+          onPressed: (_saving || selectedTrainer == null)
               ? null
-              : () => _submit(trainers, branches),
+              : () => _submit(trainers, branches, orgTz),
           child: Text(_saving ? 'Booking...' : 'Confirm Booking'),
         ),
       ],

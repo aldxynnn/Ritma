@@ -3,10 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router/app_routes.dart';
+import '../../../core/state/ritma_sync.dart';
 import '../../../core/theme/ritma_spacing.dart';
 import '../../../core/theme/theme_mode_provider.dart';
 import '../../../core/widgets/ritma_section_header.dart';
 import '../../../core/widgets/ritma_status_pill.dart';
+import '../../members/application/member_providers.dart';
+import '../../organizations/application/organization_providers.dart';
+import '../../organizations/domain/organization_model.dart';
+import '../../organizations/presentation/audit_logs_screen.dart';
 import '../../payments/presentation/payments_ledger_view.dart';
 import '../application/auth_providers.dart';
 import '../domain/auth_session_state.dart';
@@ -21,6 +26,8 @@ class ProfileScreen extends ConsumerStatefulWidget {
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _emergNameCtrl = TextEditingController();
+  final _emergPhoneCtrl = TextEditingController();
   bool _initialized = false;
   bool _saving = false;
   String? _statusMessage;
@@ -29,6 +36,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   void dispose() {
     _nameController.dispose();
     _phoneController.dispose();
+    _emergNameCtrl.dispose();
+    _emergPhoneCtrl.dispose();
     super.dispose();
   }
 
@@ -48,6 +57,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           fullName: _nameController.text,
           phone: _phoneController.text,
         );
+
+    final workspace = ref.read(activeWorkspaceProvider);
+    final memberRepo = ref.read(memberRepositoryProvider);
+    if (result.isSuccess && workspace?.memberId != null && memberRepo != null) {
+      await memberRepo.updateMyMemberContact(
+        orgId: workspace!.organizationId,
+        phone: _phoneController.text,
+        emergencyContactName: _emergNameCtrl.text,
+        emergencyContactPhone: _emergPhoneCtrl.text,
+      );
+      RitmaSync.afterProfileMutation(ref);
+    }
 
     if (!mounted) {
       return;
@@ -69,10 +90,50 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
+  Future<void> _rotateQrKey(String orgId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rotate QR Signing Key?'),
+        content: const Text(
+          'Existing QR pass tokens expire on next verification and members automatically receive newly signed tokens.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Rotate Key'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final repo = ref.read(organizationRepositoryProvider);
+    if (repo == null) return;
+    final res = await repo.rotateOrgSigningKey(orgId);
+    if (!mounted) return;
+    res.when(
+      success: (_) {
+        RitmaSync.afterOrgOrStaffMutation(ref);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Organization QR signing key rotated.')),
+        );
+      },
+      failure: (f) =>
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(f.message))),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(authControllerProvider).asData?.value;
     final workspace = ref.watch(activeWorkspaceProvider);
+    final org = ref.watch(activeOrganizationProvider).asData?.value;
 
     if (session is AuthenticatedSession && !_initialized) {
       _nameController.text = session.profile.fullName;
@@ -116,6 +177,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                               label: workspace.scopeLabel,
                               icon: Icons.location_on_outlined,
                             ),
+                            if (org != null)
+                              RitmaStatusPill(
+                                label: '${org.currencyCode} • ${org.timezone}',
+                                icon: Icons.public_outlined,
+                              ),
                           ],
                         ),
                         const SizedBox(height: RitmaSpacing.md),
@@ -148,6 +214,58 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                   size: 18,
                                 ),
                                 label: const Text('Equipment & Maintenance'),
+                              ),
+                            if (workspace.hasPermission('org.manage') &&
+                                org != null)
+                              OutlinedButton.icon(
+                                onPressed: () async {
+                                  final saved = await showDialog<bool>(
+                                    context: context,
+                                    builder: (_) =>
+                                        _OrgSettingsDialog(organization: org),
+                                  );
+                                  if (saved == true && context.mounted) {
+                                    RitmaSync.afterOrgOrStaffMutation(ref);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Organization settings updated.',
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                },
+                                icon: const Icon(
+                                  Icons.settings_outlined,
+                                  size: 18,
+                                ),
+                                label: const Text('Org Settings'),
+                              ),
+                            if (workspace.hasPermission('org.manage'))
+                              OutlinedButton.icon(
+                                onPressed: () =>
+                                    _rotateQrKey(workspace.organizationId),
+                                icon: const Icon(
+                                  Icons.vpn_key_outlined,
+                                  size: 18,
+                                ),
+                                label: const Text('Rotate QR Key'),
+                              ),
+                            if (workspace.hasPermission('audit.read'))
+                              OutlinedButton.icon(
+                                onPressed: () => showModalBottomSheet<void>(
+                                  context: context,
+                                  isScrollControlled: true,
+                                  builder: (_) => const FractionallySizedBox(
+                                    heightFactor: 0.85,
+                                    child: AuditLogsSheet(),
+                                  ),
+                                ),
+                                icon: const Icon(
+                                  Icons.policy_outlined,
+                                  size: 18,
+                                ),
+                                label: const Text('Audit Logs'),
                               ),
                             if (workspace.memberId != null)
                               OutlinedButton.icon(
@@ -204,6 +322,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         keyboardType: TextInputType.phone,
                         decoration: const InputDecoration(labelText: 'Phone'),
                       ),
+                      if (workspace?.memberId != null) ...[
+                        const SizedBox(height: RitmaSpacing.md),
+                        TextField(
+                          controller: _emergNameCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Emergency Contact Name',
+                          ),
+                        ),
+                        const SizedBox(height: RitmaSpacing.md),
+                        TextField(
+                          controller: _emergPhoneCtrl,
+                          keyboardType: TextInputType.phone,
+                          decoration: const InputDecoration(
+                            labelText: 'Emergency Contact Phone',
+                          ),
+                        ),
+                      ],
                       if (_statusMessage != null) ...[
                         const SizedBox(height: RitmaSpacing.sm),
                         Text(
@@ -277,6 +412,180 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _OrgSettingsDialog extends ConsumerStatefulWidget {
+  const _OrgSettingsDialog({required this.organization});
+
+  final OrganizationModel organization;
+
+  @override
+  ConsumerState<_OrgSettingsDialog> createState() => _OrgSettingsDialogState();
+}
+
+class _OrgSettingsDialogState extends ConsumerState<_OrgSettingsDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _nameCtrl;
+  late String _businessType;
+  late String _timezone;
+  late String _currencyCode;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameCtrl = TextEditingController(text: widget.organization.name);
+    _businessType = widget.organization.businessType;
+    _timezone = widget.organization.timezone;
+    _currencyCode = widget.organization.currencyCode;
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Organization Settings'),
+      content: SizedBox(
+        width: 400,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (_error != null) ...[
+                  Text(
+                    _error!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                  const SizedBox(height: RitmaSpacing.sm),
+                ],
+                TextFormField(
+                  controller: _nameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Organization Name',
+                  ),
+                  validator: (v) =>
+                      (v == null || v.trim().length < 2) ? 'Min 2 chars' : null,
+                ),
+                const SizedBox(height: RitmaSpacing.xs),
+                DropdownButtonFormField<String>(
+                  initialValue:
+                      const {'gym', 'studio', 'hybrid'}.contains(_businessType)
+                      ? _businessType
+                      : 'hybrid',
+                  decoration: const InputDecoration(labelText: 'Business Type'),
+                  items: const [
+                    DropdownMenuItem(value: 'gym', child: Text('Gym')),
+                    DropdownMenuItem(value: 'studio', child: Text('Studio')),
+                    DropdownMenuItem(value: 'hybrid', child: Text('Hybrid')),
+                  ],
+                  onChanged: (v) {
+                    if (v != null) setState(() => _businessType = v);
+                  },
+                ),
+                const SizedBox(height: RitmaSpacing.xs),
+                DropdownButtonFormField<String>(
+                  initialValue:
+                      const {
+                        'UTC',
+                        'Asia/Jakarta',
+                        'Asia/Singapore',
+                        'Asia/Makassar',
+                        'Asia/Jayapura',
+                      }.contains(_timezone)
+                      ? _timezone
+                      : 'UTC',
+                  decoration: const InputDecoration(labelText: 'Timezone'),
+                  items: const [
+                    DropdownMenuItem(value: 'UTC', child: Text('UTC')),
+                    DropdownMenuItem(
+                      value: 'Asia/Jakarta',
+                      child: Text('Asia/Jakarta (WIB)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Asia/Makassar',
+                      child: Text('Asia/Makassar (WITA)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Asia/Jayapura',
+                      child: Text('Asia/Jayapura (WIT)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Asia/Singapore',
+                      child: Text('Asia/Singapore'),
+                    ),
+                  ],
+                  onChanged: (v) {
+                    if (v != null) setState(() => _timezone = v);
+                  },
+                ),
+                const SizedBox(height: RitmaSpacing.xs),
+                DropdownButtonFormField<String>(
+                  initialValue:
+                      const {'USD', 'IDR', 'SGD', 'EUR'}.contains(_currencyCode)
+                      ? _currencyCode
+                      : 'USD',
+                  decoration: const InputDecoration(labelText: 'Currency'),
+                  items: const [
+                    DropdownMenuItem(value: 'USD', child: Text('USD (\$)')),
+                    DropdownMenuItem(value: 'IDR', child: Text('IDR (Rp)')),
+                    DropdownMenuItem(value: 'SGD', child: Text('SGD (S\$)')),
+                    DropdownMenuItem(value: 'EUR', child: Text('EUR (€)')),
+                  ],
+                  onChanged: (v) {
+                    if (v != null) setState(() => _currencyCode = v);
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _saving ? null : () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _saving
+              ? null
+              : () async {
+                  if (!(_formKey.currentState?.validate() ?? false)) return;
+                  final repo = ref.read(organizationRepositoryProvider);
+                  if (repo == null) return;
+                  setState(() {
+                    _saving = true;
+                    _error = null;
+                  });
+                  final res = await repo.updateOrganizationSettings(
+                    orgId: widget.organization.id,
+                    name: _nameCtrl.text,
+                    businessType: _businessType,
+                    timezone: _timezone,
+                    currencyCode: _currencyCode,
+                  );
+                  if (!context.mounted) return;
+                  setState(() => _saving = false);
+                  res.when(
+                    success: (_) => Navigator.of(context).pop(true),
+                    failure: (f) => setState(() => _error = f.message),
+                  );
+                },
+          child: Text(_saving ? 'Saving...' : 'Save'),
+        ),
+      ],
     );
   }
 }

@@ -184,7 +184,19 @@ async function main() {
     'demo.trainer2@ritma.app',
     'Coach Dimas Pratama',
   );
-  console.log('All 5 Cloud demo auth accounts ready.');
+
+  const receptionistUser = new CloudSession(url, anonKey);
+  await receptionistUser.ensureAuthenticated(
+    'demo.receptionist@ritma.app',
+    'Sinta Dewi',
+  );
+
+  const instructorUser = new CloudSession(url, anonKey);
+  const instructorUid = await instructorUser.ensureAuthenticated(
+    'demo.instructor@ritma.app',
+    'Sora Lestari',
+  );
+  console.log('All 7 Cloud demo auth accounts ready.');
 
   // 1. Ensure showcase Organization & Branches
   let workspaces = await owner.rpc('get_my_workspaces');
@@ -257,6 +269,8 @@ async function main() {
   await ensureStaffRole(manager, 'branch_manager', snptId);
   await ensureStaffRole(trainer1User, 'personal_trainer', snptId);
   await ensureStaffRole(trainer2User, 'personal_trainer', scbdId);
+  await ensureStaffRole(receptionistUser, 'receptionist', scbdId);
+  await ensureStaffRole(instructorUser, 'instructor', snptId);
   console.log('Staff roles verified across SCBD Flagship Gym & Senopati Boutique Studio.');
 
   // 2. Rooms (4)
@@ -562,7 +576,7 @@ async function main() {
       room_id: roomByName['Reformer Pilates Sanctuary'].id,
       class_type_id: typeByName['Reformer Pilates'].id,
       instructor_display_name: 'Sora Lestari',
-      instructor_user_id: null,
+      instructor_user_id: instructorUid,
       startH: 24,
       durMin: 60,
       capacity: 12,
@@ -637,29 +651,52 @@ async function main() {
   ];
 
   let existingSessions = await owner.rest('GET', `class_sessions?organization_id=eq.${orgId}`);
+  const minFutureMs = Date.now() + 60 * 60 * 1000;
   for (const s of desiredSessions) {
-    if (!existingSessions.some((es) => es.title === s.title && es.status !== 'cancelled')) {
-      const startsAt = isoPlus(s.startH);
-      const endsAt = isoPlus(s.startH, s.durMin);
-      const cutoff = isoPlus(Math.max(1, s.startH - 2));
-      const [created] = await owner.rest('POST', 'class_sessions', {
-        organization_id: orgId,
-        branch_id: s.branch_id,
-        room_id: s.room_id,
-        class_type_id: s.class_type_id,
-        instructor_user_id: s.instructor_user_id,
-        instructor_display_name: s.instructor_display_name,
-        title: s.title,
-        starts_at: startsAt,
-        ends_at: endsAt,
-        capacity: s.capacity,
-        credit_cost: s.credit_cost,
-        cancellation_cutoff_at: cutoff,
-        waitlist_enabled: s.waitlist_enabled,
-      });
-      existingSessions.push(created);
+    const existingUpcoming = existingSessions.find(
+      (es) =>
+        es.title === s.title &&
+        es.status === 'scheduled' &&
+        new Date(es.starts_at).getTime() > minFutureMs,
+    );
+    if (existingUpcoming) {
+      if (s.instructor_user_id && !existingUpcoming.instructor_user_id) {
+        const [updated] = await owner.rest(
+          'PATCH',
+          `class_sessions?id=eq.${existingUpcoming.id}`,
+          {
+            instructor_user_id: s.instructor_user_id,
+            instructor_display_name: s.instructor_display_name,
+          },
+        );
+        const idx = existingSessions.findIndex((es) => es.id === existingUpcoming.id);
+        if (idx >= 0 && updated) existingSessions[idx] = updated;
+      }
+      continue;
     }
+    const startsAt = isoPlus(s.startH);
+    const endsAt = isoPlus(s.startH, s.durMin);
+    const cutoff = isoPlus(Math.max(1, s.startH - 2));
+    const [created] = await owner.rest('POST', 'class_sessions', {
+      organization_id: orgId,
+      branch_id: s.branch_id,
+      room_id: s.room_id,
+      class_type_id: s.class_type_id,
+      instructor_user_id: s.instructor_user_id,
+      instructor_display_name: s.instructor_display_name,
+      title: s.title,
+      starts_at: startsAt,
+      ends_at: endsAt,
+      capacity: s.capacity,
+      credit_cost: s.credit_cost,
+      cancellation_cutoff_at: cutoff,
+      waitlist_enabled: s.waitlist_enabled,
+    });
+    existingSessions.push(created);
   }
+  existingSessions.sort(
+    (a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime(),
+  );
   const sessionByTitle = Object.fromEntries(existingSessions.map((s) => [s.title, s]));
 
   const bookingPlan = [
@@ -787,6 +824,19 @@ async function main() {
       p_notes: 'Completed thoracic mobility progression; ready for green spring upgrade.',
     });
   }
+
+  const upcomingPtStart = new Date(ptSlot1Start.getTime() + 2 * 60 * 60 * 1000);
+  const upcomingPtEnd = new Date(upcomingPtStart.getTime() + 60 * 60 * 1000);
+  await owner.rpc('book_pt_session', {
+    p_org_id: orgId,
+    p_branch_id: snptId,
+    p_trainer_id: trainerMaya.id,
+    p_member_id: memberByCode['RTM-1007'].id,
+    p_starts_at: upcomingPtStart.toISOString(),
+    p_ends_at: upcomingPtEnd.toISOString(),
+    p_credit_cost: 1,
+    p_idempotency_key: 'seed-pt-session-maya-tania-upcoming-1',
+  });
   console.log('Personal Training trainers, availabilities, and sessions ready.');
 
   // 10. Equipment Assets & Maintenance Tickets
@@ -851,7 +901,7 @@ async function main() {
   console.log(`Organization: ${ORG_NAME} (${orgId})`);
   console.log(`Branches: SCBD (${scbdId}), SNPT (${snptId})`);
   console.log('KPIs (30d):', JSON.stringify(kpis));
-  console.log('Demo accounts: demo.owner@ritma.app, demo.manager@ritma.app, demo.member@ritma.app, demo.trainer1@ritma.app, demo.trainer2@ritma.app');
+  console.log('Demo accounts: demo.owner@ritma.app, demo.manager@ritma.app, demo.receptionist@ritma.app, demo.instructor@ritma.app, demo.trainer1@ritma.app, demo.trainer2@ritma.app, demo.member@ritma.app');
 }
 
 main().catch((err) => {

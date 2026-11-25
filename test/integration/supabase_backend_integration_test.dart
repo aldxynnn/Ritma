@@ -288,6 +288,7 @@ void main() {
             memberCode: 'L-HYB-$tag'.toUpperCase(),
             fullName: 'Hybrid Live Patron',
             email: ownerEmail,
+            phone: '+62812-5550-$tag',
           )).when(
             success: (m) => m,
             failure: (f) => fail('Register hybridMember failed: $f'),
@@ -323,13 +324,47 @@ void main() {
         isTrue,
       );
 
-      // Verify search & status transition
+      // Verify search (name, code, email, phone, and special PostgREST chars) & status transition
       final foundMembers =
           (await memberRepo.fetchMembers(orgId: orgId, query: 'Gym Live')).when(
             success: (l) => l,
             failure: (f) => fail('Search members failed: $f'),
           );
       expect(foundMembers.map((m) => m.id), contains(gymMember.id));
+
+      final foundByEmail =
+          (await memberRepo.fetchMembers(orgId: orgId, query: ownerEmail)).when(
+            success: (l) => l,
+            failure: (f) => fail('Search by email failed: $f'),
+          );
+      expect(foundByEmail.map((m) => m.id), contains(hybridMember.id));
+
+      final foundByPhone =
+          (await memberRepo.fetchMembers(
+            orgId: orgId,
+            query: '5550-$tag',
+          )).when(
+            success: (l) => l,
+            failure: (f) => fail('Search by phone failed: $f'),
+          );
+      expect(foundByPhone.map((m) => m.id), contains(hybridMember.id));
+
+      for (final edgeQuery in const <String>[
+        'Hybrid, Live, Patron',
+        'csv,col2,col3',
+        "(VIP), O'Connor \"test\" 100%_a\\b",
+      ]) {
+        final edgeRes =
+            (await memberRepo.fetchMembers(
+              orgId: orgId,
+              query: edgeQuery,
+            )).when(
+              success: (l) => l,
+              failure: (f) =>
+                  fail('Special-char search failed for "$edgeQuery": $f'),
+            );
+        expect(edgeRes, isEmpty);
+      }
 
       await memberRepo
           .setMemberStatus(

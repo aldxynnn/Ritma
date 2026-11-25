@@ -272,7 +272,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   ),
                   const SizedBox(height: RitmaSpacing.xxs),
                   Text(
-                    'Pre-fills RITMA Atelier & Athletic demo credentials, then click Sign In.',
+                    'Portfolio showcase environment (automatically hidden in APP_ENV=prod). Pre-fills demo credentials, then click Sign In.',
                     style: theme.textTheme.bodySmall,
                   ),
                   const SizedBox(height: RitmaSpacing.xs),
@@ -296,6 +296,36 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                         label: const Text('Branch Manager'),
                         onPressed: () => _fillCredentials(
                           'demo.manager@ritma.app',
+                          'RitmaDemo2026!',
+                        ),
+                      ),
+                      ActionChip(
+                        avatar: const Icon(Icons.desk_outlined, size: 16),
+                        label: const Text('Receptionist'),
+                        onPressed: () => _fillCredentials(
+                          'demo.receptionist@ritma.app',
+                          'RitmaDemo2026!',
+                        ),
+                      ),
+                      ActionChip(
+                        avatar: const Icon(
+                          Icons.event_available_outlined,
+                          size: 16,
+                        ),
+                        label: const Text('Instructor'),
+                        onPressed: () => _fillCredentials(
+                          'demo.instructor@ritma.app',
+                          'RitmaDemo2026!',
+                        ),
+                      ),
+                      ActionChip(
+                        avatar: const Icon(
+                          Icons.fitness_center_outlined,
+                          size: 16,
+                        ),
+                        label: const Text('Personal Trainer'),
+                        onPressed: () => _fillCredentials(
+                          'demo.trainer1@ritma.app',
                           'RitmaDemo2026!',
                         ),
                       ),

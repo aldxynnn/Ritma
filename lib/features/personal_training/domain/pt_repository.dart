@@ -18,6 +18,12 @@ abstract interface class PtRepository {
     String? memberId,
   });
 
+  Future<Result<List<PtClientLookup>>> lookupMembersForPtBooking({
+    required String orgId,
+    required String branchId,
+    String query = '',
+  });
+
   Future<Result<PtBookingOutcome>> bookPtSession({
     required String orgId,
     required String branchId,
@@ -33,5 +39,11 @@ abstract interface class PtRepository {
     required String orgId,
     required String ptSessionId,
     String? notes,
+  });
+
+  Future<Result<PtCancelOutcome>> cancelPtSession({
+    required String orgId,
+    required String ptSessionId,
+    String? reason,
   });
 }

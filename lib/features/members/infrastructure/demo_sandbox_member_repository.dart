@@ -32,7 +32,9 @@ class DemoSandboxMemberRepository extends BaseRepository
         }
         if (q != null && q.isNotEmpty) {
           return m.fullName.toLowerCase().contains(q) ||
-              m.memberCode.toLowerCase().contains(q);
+              m.memberCode.toLowerCase().contains(q) ||
+              (m.email ?? '').toLowerCase().contains(q) ||
+              (m.phone ?? '').toLowerCase().contains(q);
         }
         return true;
       }).toList()..sort((a, b) => a.fullName.compareTo(b.fullName));
@@ -63,6 +65,50 @@ class DemoSandboxMemberRepository extends BaseRepository
         emergencyContactPhone: emergencyContactPhone,
       ),
       operation: 'demo.registerMember',
+    );
+  }
+
+  @override
+  Future<Result<MemberModel>> updateMember({
+    required String orgId,
+    required String memberId,
+    required String homeBranchId,
+    required String fullName,
+    String? email,
+    String? phone,
+    String? emergencyContactName,
+    String? emergencyContactPhone,
+  }) {
+    return guard(
+      () async => _engine.updateMember(
+        orgId: orgId,
+        memberId: memberId,
+        homeBranchId: homeBranchId,
+        fullName: fullName,
+        email: email,
+        phone: phone,
+        emergencyContactName: emergencyContactName,
+        emergencyContactPhone: emergencyContactPhone,
+      ),
+      operation: 'demo.updateMember',
+    );
+  }
+
+  @override
+  Future<Result<void>> updateMyMemberContact({
+    required String orgId,
+    String? phone,
+    String? emergencyContactName,
+    String? emergencyContactPhone,
+  }) {
+    return guard(
+      () async => _engine.updateMyMemberContact(
+        orgId: orgId,
+        phone: phone,
+        emergencyContactName: emergencyContactName,
+        emergencyContactPhone: emergencyContactPhone,
+      ),
+      operation: 'demo.updateMyMemberContact',
     );
   }
 

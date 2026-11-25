@@ -45,16 +45,32 @@ final memberQrPassProvider = FutureProvider.autoDispose<QrPassToken?>((
   );
 });
 
+class SelectedCheckInBranchNotifier extends Notifier<String?> {
+  @override
+  String? build() {
+    ref.watch(activeWorkspaceProvider);
+    return null;
+  }
+
+  void setBranch(String? branchId) => state = branchId;
+}
+
+final selectedCheckInBranchProvider =
+    NotifierProvider<SelectedCheckInBranchNotifier, String?>(
+      SelectedCheckInBranchNotifier.new,
+    );
+
 final branchVisitsProvider =
     FutureProvider.autoDispose<List<FacilityVisitModel>>((ref) async {
       final workspace = ref.watch(activeWorkspaceProvider);
       final repo = ref.watch(facilityAccessRepositoryProvider);
+      final selectedBranch = ref.watch(selectedCheckInBranchProvider);
       if (workspace == null || repo == null) {
         return const <FacilityVisitModel>[];
       }
       final res = await repo.fetchBranchVisits(
         orgId: workspace.organizationId,
-        branchId: workspace.branchId,
+        branchId: workspace.branchId ?? selectedBranch,
       );
       return res.when(
         success: (list) => list,

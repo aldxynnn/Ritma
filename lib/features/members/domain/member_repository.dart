@@ -20,6 +20,24 @@ abstract interface class MemberRepository {
     String? emergencyContactPhone,
   });
 
+  Future<Result<MemberModel>> updateMember({
+    required String orgId,
+    required String memberId,
+    required String homeBranchId,
+    required String fullName,
+    String? email,
+    String? phone,
+    String? emergencyContactName,
+    String? emergencyContactPhone,
+  });
+
+  Future<Result<void>> updateMyMemberContact({
+    required String orgId,
+    String? phone,
+    String? emergencyContactName,
+    String? emergencyContactPhone,
+  });
+
   Future<Result<void>> setMemberStatus({
     required String orgId,
     required String memberId,

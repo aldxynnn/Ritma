@@ -174,3 +174,21 @@ Map<String, dynamic> _$CancelBookingOutcomeToJson(
   'promoted_booking_id': instance.promotedBookingId,
   'idempotent_replay': instance.idempotentReplay,
 };
+
+_AssignableInstructor _$AssignableInstructorFromJson(
+  Map<String, dynamic> json,
+) => _AssignableInstructor(
+  userId: json['user_id'] as String,
+  displayName: json['display_name'] as String,
+  roleCode: json['role_code'] as String? ?? '',
+  roleDisplayName: json['role_display_name'] as String? ?? '',
+);
+
+Map<String, dynamic> _$AssignableInstructorToJson(
+  _AssignableInstructor instance,
+) => <String, dynamic>{
+  'user_id': instance.userId,
+  'display_name': instance.displayName,
+  'role_code': instance.roleCode,
+  'role_display_name': instance.roleDisplayName,
+};

@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/state/ritma_sync.dart';
 import '../../../core/theme/ritma_spacing.dart';
 import '../../../core/widgets/async_state_view.dart';
 import '../../../core/widgets/ritma_page_container.dart';
 import '../../../core/widgets/ritma_section_header.dart';
 import '../../../core/widgets/ritma_status_pill.dart';
 import '../../auth/application/auth_providers.dart';
-import '../../packages/application/package_providers.dart';
 import '../application/booking_providers.dart';
 import '../domain/booking_models.dart';
 
@@ -78,9 +78,7 @@ class _MemberBookingsListViewState
     setState(() => _cancellingId = null);
     res.when(
       success: (outcome) {
-        ref.invalidate(memberBookingsProvider);
-        ref.invalidate(classSessionsProvider);
-        ref.invalidate(memberWalletProvider(memberId));
+        RitmaSync.afterBookingMutation(ref, sessionId: booking.sessionId);
         final msg = outcome.refundedCredits > 0
             ? 'Cancelled. Refunded ${outcome.refundedCredits} credit(s).'
             : 'Booking cancelled.';

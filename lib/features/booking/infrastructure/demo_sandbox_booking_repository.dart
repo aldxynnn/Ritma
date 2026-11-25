@@ -68,6 +68,54 @@ class DemoSandboxBookingRepository extends BaseRepository
   }
 
   @override
+  Future<Result<List<AssignableInstructor>>> fetchAssignableInstructors({
+    required String orgId,
+    String? branchId,
+  }) {
+    return guard(
+      () async =>
+          _engine.fetchAssignableInstructors(orgId: orgId, branchId: branchId),
+      operation: 'demo.fetchAssignableInstructors',
+    );
+  }
+
+  @override
+  Future<Result<ClassSessionModel>> updateClassSession({
+    required String orgId,
+    required String sessionId,
+    required String roomId,
+    required String classTypeId,
+    required String title,
+    required DateTime startsAt,
+    required DateTime endsAt,
+    required int capacity,
+    required int creditCost,
+    required DateTime cancellationCutoffAt,
+    required bool waitlistEnabled,
+    String? instructorUserId,
+    required String instructorDisplayName,
+  }) {
+    return guard(
+      () async => _engine.updateClassSession(
+        orgId: orgId,
+        sessionId: sessionId,
+        roomId: roomId,
+        classTypeId: classTypeId,
+        title: title,
+        startsAt: startsAt,
+        endsAt: endsAt,
+        capacity: capacity,
+        creditCost: creditCost,
+        cancellationCutoffAt: cancellationCutoffAt,
+        waitlistEnabled: waitlistEnabled,
+        instructorUserId: instructorUserId,
+        instructorDisplayName: instructorDisplayName,
+      ),
+      operation: 'demo.updateClassSession',
+    );
+  }
+
+  @override
   Future<Result<void>> cancelClassSession({
     required String orgId,
     required String sessionId,

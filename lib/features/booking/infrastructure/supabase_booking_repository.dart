@@ -86,6 +86,71 @@ class SupabaseBookingRepository extends BaseRepository
   }
 
   @override
+  Future<Result<List<AssignableInstructor>>> fetchAssignableInstructors({
+    required String orgId,
+    String? branchId,
+  }) {
+    return guard(() async {
+      final raw = await _client.rpc<dynamic>(
+        'list_assignable_instructors',
+        params: <String, dynamic>{'p_org_id': orgId, 'p_branch_id': branchId},
+      );
+      if (raw is! List<dynamic>) {
+        return const <AssignableInstructor>[];
+      }
+      return raw
+          .whereType<Map<dynamic, dynamic>>()
+          .map(
+            (row) =>
+                AssignableInstructor.fromJson(Map<String, dynamic>.from(row)),
+          )
+          .toList();
+    }, operation: 'fetchAssignableInstructors');
+  }
+
+  @override
+  Future<Result<ClassSessionModel>> updateClassSession({
+    required String orgId,
+    required String sessionId,
+    required String roomId,
+    required String classTypeId,
+    required String title,
+    required DateTime startsAt,
+    required DateTime endsAt,
+    required int capacity,
+    required int creditCost,
+    required DateTime cancellationCutoffAt,
+    required bool waitlistEnabled,
+    String? instructorUserId,
+    required String instructorDisplayName,
+  }) {
+    return guard(() async {
+      final row = await _client
+          .from('class_sessions')
+          .update(<String, dynamic>{
+            'room_id': roomId,
+            'class_type_id': classTypeId,
+            'instructor_user_id': instructorUserId,
+            'instructor_display_name': instructorDisplayName.trim(),
+            'title': title.trim(),
+            'starts_at': startsAt.toUtc().toIso8601String(),
+            'ends_at': endsAt.toUtc().toIso8601String(),
+            'capacity': capacity,
+            'credit_cost': creditCost,
+            'cancellation_cutoff_at': cancellationCutoffAt
+                .toUtc()
+                .toIso8601String(),
+            'waitlist_enabled': waitlistEnabled,
+          })
+          .eq('organization_id', orgId)
+          .eq('id', sessionId)
+          .select(_sessionColumns)
+          .single();
+      return ClassSessionModel.fromJson(Map<String, dynamic>.from(row));
+    }, operation: 'updateClassSession');
+  }
+
+  @override
   Future<Result<void>> cancelClassSession({
     required String orgId,
     required String sessionId,

@@ -57,3 +57,24 @@ final ptSessionsProvider = FutureProvider.autoDispose<List<PtSessionModel>>((
     failure: (failure) => throw AppException(failure),
   );
 });
+
+final ptClientLookupProvider = FutureProvider.autoDispose
+    .family<List<PtClientLookup>, ({String branchId, String query})>((
+      ref,
+      params,
+    ) async {
+      final workspace = ref.watch(activeWorkspaceProvider);
+      final repo = ref.watch(ptRepositoryProvider);
+      if (workspace == null || repo == null) {
+        return const <PtClientLookup>[];
+      }
+      final res = await repo.lookupMembersForPtBooking(
+        orgId: workspace.organizationId,
+        branchId: params.branchId,
+        query: params.query,
+      );
+      return res.when(
+        success: (list) => list,
+        failure: (failure) => throw AppException(failure),
+      );
+    });

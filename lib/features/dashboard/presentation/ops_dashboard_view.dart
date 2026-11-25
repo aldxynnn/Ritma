@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../../app/router/app_routes.dart';
 import '../../../core/theme/ritma_spacing.dart';
+import '../../../core/utils/ritma_timezone.dart';
 import '../../../core/widgets/async_state_view.dart';
 import '../../../core/widgets/ritma_metric_tile.dart';
 import '../../../core/widgets/ritma_page_container.dart';
@@ -15,8 +16,11 @@ import '../../booking/application/booking_providers.dart';
 import '../../booking/domain/booking_models.dart';
 import '../../facility_access/application/facility_access_providers.dart';
 import '../../facility_access/domain/facility_access_models.dart';
+import '../../organizations/application/organization_providers.dart';
+import '../../organizations/domain/branch_model.dart';
 import '../application/dashboard_providers.dart';
 import '../domain/operational_metrics_model.dart';
+import 'report_export_sheet.dart';
 
 class LiveOpsDashboardView extends ConsumerWidget {
   const LiveOpsDashboardView({super.key});
@@ -25,12 +29,32 @@ class LiveOpsDashboardView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final workspace = ref.watch(activeWorkspaceProvider);
     final windowDays = ref.watch(dashboardWindowDaysProvider);
+    final selectedBranchFilter = ref.watch(dashboardBranchFilterProvider);
+    final branches =
+        ref.watch(orgBranchesProvider).asData?.value ?? const <BranchModel>[];
+    final org = ref.watch(activeOrganizationProvider).asData?.value;
     final metricsAsync = ref.watch(operationalMetricsProvider);
     final visitsAsync = ref.watch(branchVisitsProvider);
     final sessionsAsync = ref.watch(classSessionsProvider);
 
     final numFmt = NumberFormat.decimalPattern();
-    final moneyFmt = NumberFormat.currency(symbol: r'$', decimalDigits: 2);
+    final canExport =
+        workspace != null &&
+        (workspace.hasPermission('checkin.read') ||
+            workspace.hasPermission('payment.read') ||
+            workspace.hasPermission('member.read') ||
+            workspace.hasPermission('booking.read'));
+    final scopedOrgBranch = workspace?.branchId ?? selectedBranchFilter;
+    final branchFilterLabel = workspace?.branchId != null
+        ? workspace!.scopeLabel
+        : (selectedBranchFilter == null
+              ? 'All Branches'
+              : (branches
+                        .where((b) => b.id == selectedBranchFilter)
+                        .firstOrNull
+                        ?.name ??
+                    workspace?.scopeLabel ??
+                    'All Branches'));
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -62,7 +86,7 @@ class LiveOpsDashboardView extends ConsumerWidget {
                           ),
                           if (workspace != null)
                             RitmaStatusPill(
-                              label: workspace.scopeLabel,
+                              label: branchFilterLabel,
                               icon: Icons.location_on_outlined,
                             ),
                           if (workspace != null)
@@ -73,26 +97,91 @@ class LiveOpsDashboardView extends ConsumerWidget {
                         ],
                       ),
                       const SizedBox(height: RitmaSpacing.sm),
-                      Row(
+                      Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: RitmaSpacing.sm,
+                        runSpacing: RitmaSpacing.xs,
                         children: [
-                          Expanded(
-                            child: Text(
-                              workspace?.organizationName ??
-                                  'Operations Dashboard',
-                              style: Theme.of(context).textTheme.headlineSmall,
-                            ),
+                          Text(
+                            workspace?.organizationName ??
+                                'Operations Dashboard',
+                            style: Theme.of(context).textTheme.headlineSmall,
                           ),
-                          IconButton(
-                            tooltip: 'Refresh KPIs',
-                            onPressed: () {
-                              ref.invalidate(operationalMetricsProvider);
-                              ref.invalidate(branchVisitsProvider);
-                              ref.invalidate(classSessionsProvider);
-                            },
-                            icon: const Icon(Icons.refresh),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (canExport)
+                                Padding(
+                                  padding: const EdgeInsets.only(
+                                    right: RitmaSpacing.xs,
+                                  ),
+                                  child: OutlinedButton.icon(
+                                    onPressed: () => showModalBottomSheet<void>(
+                                      context: context,
+                                      isScrollControlled: true,
+                                      builder: (_) => ReportExportSheet(
+                                        branchId: scopedOrgBranch,
+                                      ),
+                                    ),
+                                    icon: const Icon(
+                                      Icons.download_outlined,
+                                      size: 18,
+                                    ),
+                                    label: const Text('Export Report'),
+                                  ),
+                                ),
+                              IconButton(
+                                tooltip: 'Refresh KPIs',
+                                onPressed: () {
+                                  ref.invalidate(operationalMetricsProvider);
+                                  ref.invalidate(branchVisitsProvider);
+                                  ref.invalidate(classSessionsProvider);
+                                },
+                                icon: const Icon(Icons.refresh),
+                              ),
+                            ],
                           ),
                         ],
                       ),
+                      if (workspace != null &&
+                          workspace.branchId == null &&
+                          branches.isNotEmpty) ...[
+                        const SizedBox(height: RitmaSpacing.sm),
+                        SizedBox(
+                          width: 320,
+                          child: DropdownButtonFormField<String?>(
+                            key: ValueKey(
+                              'dash-branch-${selectedBranchFilter ?? 'all'}',
+                            ),
+                            initialValue: selectedBranchFilter,
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                              labelText: 'Dashboard Branch Scope',
+                              isDense: true,
+                              prefixIcon: Icon(Icons.filter_alt_outlined),
+                            ),
+                            items: [
+                              const DropdownMenuItem<String?>(
+                                value: null,
+                                child: Text('All Branches (Org-Wide)'),
+                              ),
+                              ...branches.map(
+                                (b) => DropdownMenuItem<String?>(
+                                  value: b.id,
+                                  child: Text(
+                                    '${b.name} (${b.code})',
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ),
+                            ],
+                            onChanged: (val) => ref
+                                .read(dashboardBranchFilterProvider.notifier)
+                                .setBranch(val),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: RitmaSpacing.sm),
                       Wrap(
                         alignment: WrapAlignment.spaceBetween,
@@ -193,11 +282,12 @@ class LiveOpsDashboardView extends ConsumerWidget {
                       icon: Icons.event_available_outlined,
                     ),
                     RitmaMetricTile(
-                      label: 'Revenue (${windowDays}d)',
-                      value: moneyFmt.format(
-                        metrics.windowRevenueMinor / 100.0,
+                      label: 'Net Revenue (${windowDays}d)',
+                      value: RitmaTimezone.formatMoney(
+                        metrics.windowRevenueMinor,
+                        org?.currencyCode,
                       ),
-                      caption: 'Paid subscriptions',
+                      caption: 'Paid net of refunds',
                       icon: Icons.payments_outlined,
                       highlighted: metrics.windowRevenueMinor > 0,
                     ),

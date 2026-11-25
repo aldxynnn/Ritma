@@ -42,7 +42,10 @@ class _OpsScheduleViewState extends ConsumerState<OpsScheduleView> {
         ref.watch(hasPermissionProvider('booking.read')) ||
         ref.watch(hasPermissionProvider('attendance.mark')) ||
         ref.watch(hasPermissionProvider('booking.manage'));
-    final canPt = ref.watch(hasPermissionProvider('pt.manage'));
+    final canPt =
+        ref.watch(hasPermissionProvider('pt.manage')) ||
+        ref.watch(hasPermissionProvider('booking.manage')) ||
+        ref.watch(hasPermissionProvider('pt.read'));
 
     if (!canClasses && canPt) {
       return const PtSessionsView();

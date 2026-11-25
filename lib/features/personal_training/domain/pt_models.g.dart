@@ -67,6 +67,7 @@ _PtSessionModel _$PtSessionModelFromJson(Map<String, dynamic> json) =>
       organizationId: json['organization_id'] as String,
       branchId: json['branch_id'] as String,
       trainerId: json['trainer_id'] as String,
+      trainerUserId: json['trainer_user_id'] as String?,
       memberId: json['member_id'] as String,
       startsAt: DateTime.parse(json['starts_at'] as String),
       endsAt: DateTime.parse(json['ends_at'] as String),
@@ -77,6 +78,7 @@ _PtSessionModel _$PtSessionModelFromJson(Map<String, dynamic> json) =>
       notes: json['notes'] as String?,
       trainerDisplayName: json['trainer_display_name'] as String? ?? '',
       memberDisplayName: json['member_display_name'] as String? ?? '',
+      memberCode: json['member_code'] as String? ?? '',
     );
 
 Map<String, dynamic> _$PtSessionModelToJson(_PtSessionModel instance) =>
@@ -85,6 +87,7 @@ Map<String, dynamic> _$PtSessionModelToJson(_PtSessionModel instance) =>
       'organization_id': instance.organizationId,
       'branch_id': instance.branchId,
       'trainer_id': instance.trainerId,
+      'trainer_user_id': instance.trainerUserId,
       'member_id': instance.memberId,
       'starts_at': instance.startsAt.toIso8601String(),
       'ends_at': instance.endsAt.toIso8601String(),
@@ -93,6 +96,7 @@ Map<String, dynamic> _$PtSessionModelToJson(_PtSessionModel instance) =>
       'notes': instance.notes,
       'trainer_display_name': instance.trainerDisplayName,
       'member_display_name': instance.memberDisplayName,
+      'member_code': instance.memberCode,
     };
 
 const _$PtSessionStatusEnumMap = {
@@ -102,6 +106,26 @@ const _$PtSessionStatusEnumMap = {
   PtSessionStatus.cancelledLate: 'cancelled_late',
   PtSessionStatus.noShow: 'no_show',
 };
+
+_PtClientLookup _$PtClientLookupFromJson(Map<String, dynamic> json) =>
+    _PtClientLookup(
+      id: json['id'] as String,
+      memberCode: json['member_code'] as String,
+      fullName: json['full_name'] as String,
+      homeBranchId: json['home_branch_id'] as String,
+      status: json['status'] as String? ?? 'active',
+      availablePtCredits: (json['available_pt_credits'] as num?)?.toInt() ?? 0,
+    );
+
+Map<String, dynamic> _$PtClientLookupToJson(_PtClientLookup instance) =>
+    <String, dynamic>{
+      'id': instance.id,
+      'member_code': instance.memberCode,
+      'full_name': instance.fullName,
+      'home_branch_id': instance.homeBranchId,
+      'status': instance.status,
+      'available_pt_credits': instance.availablePtCredits,
+    };
 
 _PtBookingOutcome _$PtBookingOutcomeFromJson(Map<String, dynamic> json) =>
     _PtBookingOutcome(
@@ -118,5 +142,21 @@ Map<String, dynamic> _$PtBookingOutcomeToJson(_PtBookingOutcome instance) =>
       'pt_session_id': instance.ptSessionId,
       'status': _$PtSessionStatusEnumMap[instance.status]!,
       'credit_cost': instance.creditCost,
+      'idempotent_replay': instance.idempotentReplay,
+    };
+
+_PtCancelOutcome _$PtCancelOutcomeFromJson(Map<String, dynamic> json) =>
+    _PtCancelOutcome(
+      status:
+          $enumDecodeNullable(_$PtSessionStatusEnumMap, json['status']) ??
+          PtSessionStatus.cancelledEarly,
+      refundedCredits: (json['refunded_credits'] as num?)?.toInt() ?? 0,
+      idempotentReplay: json['idempotent_replay'] as bool? ?? false,
+    );
+
+Map<String, dynamic> _$PtCancelOutcomeToJson(_PtCancelOutcome instance) =>
+    <String, dynamic>{
+      'status': _$PtSessionStatusEnumMap[instance.status]!,
+      'refunded_credits': instance.refundedCredits,
       'idempotent_replay': instance.idempotentReplay,
     };

@@ -13,4 +13,18 @@ abstract interface class PaymentRepository {
     required String memberId,
     int limit = 30,
   });
+
+  Future<Result<List<PaymentRefundModel>>> fetchPaymentRefunds({
+    required String orgId,
+    required String paymentId,
+  });
+
+  Future<Result<RefundOutcome>> recordPaymentRefund({
+    required String orgId,
+    required String paymentId,
+    required int amountMinor,
+    required String reason,
+    required String idempotencyKey,
+    String? externalReference,
+  });
 }

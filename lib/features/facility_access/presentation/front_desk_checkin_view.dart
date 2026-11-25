@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/state/ritma_sync.dart';
 import '../../../core/theme/ritma_spacing.dart';
 import '../../../core/theme/ritma_status_colors.dart';
 import '../../../core/widgets/async_state_view.dart';
@@ -14,6 +15,7 @@ import '../../organizations/application/organization_providers.dart';
 import '../../organizations/domain/branch_model.dart';
 import '../application/facility_access_providers.dart';
 import '../domain/facility_access_models.dart';
+import 'qr_scanner_sheet.dart';
 
 class FrontDeskCheckInView extends ConsumerStatefulWidget {
   const FrontDeskCheckInView({super.key});
@@ -44,11 +46,61 @@ class _FrontDeskCheckInViewState extends ConsumerState<FrontDeskCheckInView> {
     if (workspaceBranchId != null && workspaceBranchId.isNotEmpty) {
       return workspaceBranchId;
     }
-    if (_selectedBranchId != null &&
-        list.any((b) => b.id == _selectedBranchId)) {
-      return _selectedBranchId;
+    final synced = ref.read(selectedCheckInBranchProvider);
+    final candidate = _selectedBranchId ?? synced;
+    if (candidate != null && list.any((b) => b.id == candidate)) {
+      return candidate;
     }
     return list.isNotEmpty ? list.first.id : null;
+  }
+
+  Future<({bool allowed, String message, String? reasonCode})>
+  _processQrTokenValue({
+    required String orgId,
+    required String branchId,
+    required String rawToken,
+  }) async {
+    final token = rawToken.trim();
+    final repo = ref.read(facilityAccessRepositoryProvider);
+    if (repo == null) {
+      return (
+        allowed: false,
+        message: 'Check-in service unavailable.',
+        reasonCode: 'UNAVAILABLE',
+      );
+    }
+    setState(() => _submitting = true);
+    final result = await repo.validateAndCheckIn(
+      orgId: orgId,
+      branchId: branchId,
+      qrToken: token,
+      idempotencyKey: const Uuid().v4(),
+    );
+    if (!mounted) {
+      return (allowed: false, message: 'Cancelled.', reasonCode: null);
+    }
+    setState(() => _submitting = false);
+    return result.when(
+      success: (outcome) {
+        setState(() => _lastOutcome = outcome);
+        if (outcome.allowed) {
+          _qrController.clear();
+          RitmaSync.afterCheckIn(ref);
+        }
+        return (
+          allowed: outcome.allowed,
+          message: outcome.allowed
+              ? 'Check-in approved (${outcome.memberName ?? 'Member'})'
+              : 'Denied: ${outcome.reasonCode}',
+          reasonCode: outcome.reasonCode,
+        );
+      },
+      failure: (failure) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(failure.message)));
+        return (allowed: false, message: failure.message, reasonCode: 'ERROR');
+      },
+    );
   }
 
   Future<void> _submitQrCheckIn({
@@ -62,33 +114,29 @@ class _FrontDeskCheckInViewState extends ConsumerState<FrontDeskCheckInView> {
       );
       return;
     }
-    final repo = ref.read(facilityAccessRepositoryProvider);
-    if (repo == null) {
-      return;
-    }
-    setState(() => _submitting = true);
-    final result = await repo.validateAndCheckIn(
+    await _processQrTokenValue(
       orgId: orgId,
       branchId: branchId,
-      qrToken: token,
-      idempotencyKey: const Uuid().v4(),
+      rawToken: token,
     );
-    if (!mounted) {
-      return;
-    }
-    setState(() => _submitting = false);
-    result.when(
-      success: (outcome) {
-        setState(() => _lastOutcome = outcome);
-        if (outcome.allowed) {
-          _qrController.clear();
-          ref.invalidate(branchVisitsProvider);
-        }
-      },
-      failure: (failure) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(failure.message)));
-      },
+  }
+
+  Future<void> _openCameraScanner({
+    required String orgId,
+    required String branchId,
+    required String branchName,
+  }) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => QrScannerSheet(
+        branchName: branchName,
+        onScanToken: (token) => _processQrTokenValue(
+          orgId: orgId,
+          branchId: branchId,
+          rawToken: token,
+        ),
+      ),
     );
   }
 
@@ -151,7 +199,7 @@ class _FrontDeskCheckInViewState extends ConsumerState<FrontDeskCheckInView> {
       success: (outcome) {
         setState(() => _lastOutcome = outcome);
         if (outcome.allowed) {
-          ref.invalidate(branchVisitsProvider);
+          RitmaSync.afterCheckIn(ref);
         }
       },
       failure: (failure) {
@@ -181,7 +229,7 @@ class _FrontDeskCheckInViewState extends ConsumerState<FrontDeskCheckInView> {
       return;
     }
     res.when(
-      success: (_) => ref.invalidate(branchVisitsProvider),
+      success: (_) => RitmaSync.afterCheckIn(ref),
       failure: (failure) =>
           ScaffoldMessenger.of(context)
               .showSnackBar(SnackBar(content: Text(failure.message))),
@@ -198,6 +246,9 @@ class _FrontDeskCheckInViewState extends ConsumerState<FrontDeskCheckInView> {
     final branches =
         ref.watch(orgBranchesProvider).asData?.value ?? const <BranchModel>[];
     final activeBranchId = _resolveBranchId(workspace.branchId, branches);
+    final activeBranchName =
+        branches.where((b) => b.id == activeBranchId).firstOrNull?.name ??
+        'Branch';
     final canPerform = ref.watch(hasPermissionProvider('checkin.perform'));
     final canOverride = ref.watch(
       hasPermissionProvider('checkin.force_override'),
@@ -212,7 +263,7 @@ class _FrontDeskCheckInViewState extends ConsumerState<FrontDeskCheckInView> {
           children: [
             const RitmaSectionHeader(
               title: 'Front-Desk Facility Check-In',
-              subtitle: 'Validate rotating member QR tokens, enforce entitlements, and monitor occupancy',
+              subtitle: 'Scan rotating QR passes via camera or token, enforce entitlements, and monitor occupancy',
             ),
             const SizedBox(height: RitmaSpacing.md),
             if (workspace.branchId == null && branches.isNotEmpty) ...[
@@ -232,7 +283,12 @@ class _FrontDeskCheckInViewState extends ConsumerState<FrontDeskCheckInView> {
                       ),
                     )
                     .toList(),
-                onChanged: (val) => setState(() => _selectedBranchId = val),
+                onChanged: (val) {
+                  setState(() => _selectedBranchId = val);
+                  ref
+                      .read(selectedCheckInBranchProvider.notifier)
+                      .setBranch(val);
+                },
               ),
               const SizedBox(height: RitmaSpacing.md),
             ],
@@ -257,11 +313,36 @@ class _FrontDeskCheckInViewState extends ConsumerState<FrontDeskCheckInView> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  Text(
-                                    'QR Pass Validation',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleMedium,
+                                  Wrap(
+                                    alignment: WrapAlignment.spaceBetween,
+                                    crossAxisAlignment:
+                                        WrapCrossAlignment.center,
+                                    spacing: RitmaSpacing.xs,
+                                    runSpacing: RitmaSpacing.xs,
+                                    children: [
+                                      Text(
+                                        'QR Pass Validation',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleMedium,
+                                      ),
+                                      FilledButton.tonalIcon(
+                                        onPressed: _submitting
+                                            ? null
+                                            : () => _openCameraScanner(
+                                                orgId: workspace.organizationId,
+                                                branchId: activeBranchId,
+                                                branchName: activeBranchName,
+                                              ),
+                                        icon: const Icon(
+                                          Icons.camera_alt_outlined,
+                                          size: 18,
+                                        ),
+                                        label: const Text(
+                                          'Scan QR with Camera',
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                   const SizedBox(height: RitmaSpacing.xs),
                                   TextField(

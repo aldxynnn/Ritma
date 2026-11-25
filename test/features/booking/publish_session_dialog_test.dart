@@ -401,6 +401,47 @@ class _SpyBookingRepository implements BookingRepository {
   }
 
   @override
+  Future<Result<List<AssignableInstructor>>> fetchAssignableInstructors({
+    required String orgId,
+    String? branchId,
+  }) async =>
+      const Success<List<AssignableInstructor>>(<AssignableInstructor>[]);
+
+  @override
+  Future<Result<ClassSessionModel>> updateClassSession({
+    required String orgId,
+    required String sessionId,
+    required String roomId,
+    required String classTypeId,
+    required String title,
+    required DateTime startsAt,
+    required DateTime endsAt,
+    required int capacity,
+    required int creditCost,
+    required DateTime cancellationCutoffAt,
+    required bool waitlistEnabled,
+    String? instructorUserId,
+    required String instructorDisplayName,
+  }) async => Success<ClassSessionModel>(
+    ClassSessionModel(
+      id: sessionId,
+      organizationId: orgId,
+      branchId: 'b1',
+      roomId: roomId,
+      classTypeId: classTypeId,
+      instructorUserId: instructorUserId,
+      instructorDisplayName: instructorDisplayName,
+      title: title,
+      startsAt: startsAt,
+      endsAt: endsAt,
+      capacity: capacity,
+      creditCost: creditCost,
+      cancellationCutoffAt: cancellationCutoffAt,
+      waitlistEnabled: waitlistEnabled,
+    ),
+  );
+
+  @override
   Future<Result<void>> cancelClassSession({
     required String orgId,
     required String sessionId,

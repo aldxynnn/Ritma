@@ -63,6 +63,7 @@ abstract class PtSessionModel with _$PtSessionModel {
     @JsonKey(name: 'organization_id') required String organizationId,
     @JsonKey(name: 'branch_id') required String branchId,
     @JsonKey(name: 'trainer_id') required String trainerId,
+    @JsonKey(name: 'trainer_user_id') String? trainerUserId,
     @JsonKey(name: 'member_id') required String memberId,
     @JsonKey(name: 'starts_at') required DateTime startsAt,
     @JsonKey(name: 'ends_at') required DateTime endsAt,
@@ -73,10 +74,26 @@ abstract class PtSessionModel with _$PtSessionModel {
     @Default('')
     String trainerDisplayName,
     @JsonKey(name: 'member_display_name') @Default('') String memberDisplayName,
+    @JsonKey(name: 'member_code') @Default('') String memberCode,
   }) = _PtSessionModel;
 
   factory PtSessionModel.fromJson(Map<String, dynamic> json) =>
       _$PtSessionModelFromJson(json);
+}
+
+@freezed
+abstract class PtClientLookup with _$PtClientLookup {
+  const factory PtClientLookup({
+    required String id,
+    @JsonKey(name: 'member_code') required String memberCode,
+    @JsonKey(name: 'full_name') required String fullName,
+    @JsonKey(name: 'home_branch_id') required String homeBranchId,
+    @Default('active') String status,
+    @JsonKey(name: 'available_pt_credits') @Default(0) int availablePtCredits,
+  }) = _PtClientLookup;
+
+  factory PtClientLookup.fromJson(Map<String, dynamic> json) =>
+      _$PtClientLookupFromJson(json);
 }
 
 @freezed
@@ -90,4 +107,16 @@ abstract class PtBookingOutcome with _$PtBookingOutcome {
 
   factory PtBookingOutcome.fromJson(Map<String, dynamic> json) =>
       _$PtBookingOutcomeFromJson(json);
+}
+
+@freezed
+abstract class PtCancelOutcome with _$PtCancelOutcome {
+  const factory PtCancelOutcome({
+    @Default(PtSessionStatus.cancelledEarly) PtSessionStatus status,
+    @JsonKey(name: 'refunded_credits') @Default(0) int refundedCredits,
+    @JsonKey(name: 'idempotent_replay') @Default(false) bool idempotentReplay,
+  }) = _PtCancelOutcome;
+
+  factory PtCancelOutcome.fromJson(Map<String, dynamic> json) =>
+      _$PtCancelOutcomeFromJson(json);
 }

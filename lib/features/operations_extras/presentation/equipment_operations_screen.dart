@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/state/ritma_sync.dart';
 import '../../../core/theme/ritma_spacing.dart';
 import '../../../core/widgets/async_state_view.dart';
 import '../../../core/widgets/ritma_page_container.dart';
@@ -39,10 +40,7 @@ class EquipmentOperationsScreen extends ConsumerWidget {
         actions: [
           IconButton(
             tooltip: 'Refresh',
-            onPressed: () {
-              ref.invalidate(equipmentAssetsProvider);
-              ref.invalidate(maintenanceTicketsProvider);
-            },
+            onPressed: () => RitmaSync.afterEquipmentMutation(ref),
             icon: const Icon(Icons.refresh),
           ),
         ],
@@ -63,7 +61,7 @@ class EquipmentOperationsScreen extends ConsumerWidget {
                       builder: (_) => _CreateAssetDialog(branches: branches),
                     );
                     if (added == true) {
-                      ref.invalidate(equipmentAssetsProvider);
+                      RitmaSync.afterEquipmentMutation(ref);
                     }
                   },
                   icon: const Icon(Icons.add, size: 18),
@@ -154,7 +152,7 @@ class EquipmentOperationsScreen extends ConsumerWidget {
                             builder: (_) => _CreateTicketDialog(assets: assets),
                           );
                           if (added == true) {
-                            ref.invalidate(maintenanceTicketsProvider);
+                            RitmaSync.afterEquipmentMutation(ref);
                           }
                         },
                   icon: const Icon(Icons.build_outlined, size: 18),
@@ -209,9 +207,8 @@ class EquipmentOperationsScreen extends ConsumerWidget {
                                     );
                                     if (!context.mounted) return;
                                     res.when(
-                                      success: (_) => ref.invalidate(
-                                        maintenanceTicketsProvider,
-                                      ),
+                                      success: (_) =>
+                                          RitmaSync.afterEquipmentMutation(ref),
                                       failure: (f) =>
                                           ScaffoldMessenger.of(
                                             context,

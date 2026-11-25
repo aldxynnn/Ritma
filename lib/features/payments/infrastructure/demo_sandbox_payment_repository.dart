@@ -46,4 +46,38 @@ class DemoSandboxPaymentRepository extends BaseRepository
       return list.take(limit).toList();
     }, operation: 'demo.fetchMemberPayments');
   }
+
+  @override
+  Future<Result<List<PaymentRefundModel>>> fetchPaymentRefunds({
+    required String orgId,
+    required String paymentId,
+  }) {
+    return guard(
+      () async =>
+          _engine.fetchPaymentRefunds(orgId: orgId, paymentId: paymentId),
+      operation: 'demo.fetchPaymentRefunds',
+    );
+  }
+
+  @override
+  Future<Result<RefundOutcome>> recordPaymentRefund({
+    required String orgId,
+    required String paymentId,
+    required int amountMinor,
+    required String reason,
+    required String idempotencyKey,
+    String? externalReference,
+  }) {
+    return guard(
+      () async => _engine.recordPaymentRefund(
+        orgId: orgId,
+        paymentId: paymentId,
+        amountMinor: amountMinor,
+        reason: reason,
+        idempotencyKey: idempotencyKey,
+        externalReference: externalReference,
+      ),
+      operation: 'demo.recordPaymentRefund',
+    );
+  }
 }

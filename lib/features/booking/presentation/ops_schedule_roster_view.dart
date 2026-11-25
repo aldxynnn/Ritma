@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
+import 'package:uuid/uuid.dart';
 
+import '../../../core/state/ritma_sync.dart';
 import '../../../core/theme/ritma_spacing.dart';
 import '../../../core/theme/ritma_status_colors.dart';
+import '../../../core/utils/ritma_timezone.dart';
 import '../../../core/widgets/async_state_view.dart';
 import '../../../core/widgets/ritma_page_container.dart';
 import '../../../core/widgets/ritma_section_header.dart';
 import '../../../core/widgets/ritma_status_pill.dart';
 import '../../auth/application/auth_providers.dart';
 import '../../auth/domain/auth_session_state.dart';
+import '../../members/application/member_providers.dart';
+import '../../members/domain/member_model.dart';
 import '../../organizations/application/organization_providers.dart';
 import '../../organizations/domain/branch_model.dart';
 import '../../organizations/domain/room_model.dart';
@@ -18,24 +22,44 @@ import '../../packages/domain/package_models.dart';
 import '../application/booking_providers.dart';
 import '../domain/booking_models.dart';
 
-class OpsScheduleRosterView extends ConsumerWidget {
+class OpsScheduleRosterView extends ConsumerStatefulWidget {
   const OpsScheduleRosterView({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<OpsScheduleRosterView> createState() =>
+      _OpsScheduleRosterViewState();
+}
+
+class _OpsScheduleRosterViewState extends ConsumerState<OpsScheduleRosterView> {
+  bool _showHistory = false;
+
+  @override
+  Widget build(BuildContext context) {
     final workspace = ref.watch(activeWorkspaceProvider);
     if (workspace == null) {
       return const SizedBox.shrink();
     }
 
+    final authState = ref.watch(authControllerProvider).asData?.value;
+    final currentUserId = switch (authState) {
+      AuthenticatedSession(:final user) => user.id,
+      _ => null,
+    };
+
     final sessionsAsync = ref.watch(classSessionsProvider);
+    final orgTz = ref.watch(activeOrganizationProvider).asData?.value?.timezone;
     final branches =
         ref.watch(orgBranchesProvider).asData?.value ?? const <BranchModel>[];
     final rooms =
         ref.watch(orgRoomsProvider).asData?.value ?? const <RoomModel>[];
     final canManage = ref.watch(hasPermissionProvider('schedule.manage'));
+    final isInstructorOnly = workspace.roleCode == 'instructor';
+
     final branchNames = <String, String>{
       for (final b in branches) b.id: b.name,
+    };
+    final branchTz = <String, String?>{
+      for (final b in branches) b.id: b.timezone ?? orgTz,
     };
     final roomNames = <String, String>{for (final r in rooms) r.id: r.name};
 
@@ -50,7 +74,9 @@ class OpsScheduleRosterView extends ConsumerWidget {
             children: [
               RitmaSectionHeader(
                 title: 'Schedules & Live Roster',
-                subtitle: 'Publish classes, monitor waitlists, and mark instructor attendance',
+                subtitle: isInstructorOnly
+                    ? 'Classes assigned directly to you and live attendance roster'
+                    : 'Publish classes, assign instructors, monitor waitlists, and mark attendance',
                 trailing: canManage
                     ? FilledButton.icon(
                         onPressed: () async {
@@ -59,7 +85,10 @@ class OpsScheduleRosterView extends ConsumerWidget {
                             builder: (_) => const _CreateClassSessionDialog(),
                           );
                           if (created != null) {
-                            ref.invalidate(classSessionsProvider);
+                            RitmaSync.afterBookingMutation(
+                              ref,
+                              sessionId: created.id,
+                            );
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
@@ -80,16 +109,50 @@ class OpsScheduleRosterView extends ConsumerWidget {
                         icon: const Icon(Icons.refresh),
                       ),
               ),
+              const SizedBox(height: RitmaSpacing.xs),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: SegmentedButton<bool>(
+                  segments: const [
+                    ButtonSegment<bool>(
+                      value: false,
+                      label: Text('Upcoming'),
+                      icon: Icon(Icons.upcoming_outlined, size: 16),
+                    ),
+                    ButtonSegment<bool>(
+                      value: true,
+                      label: Text('History'),
+                      icon: Icon(Icons.history, size: 16),
+                    ),
+                  ],
+                  selected: <bool>{_showHistory},
+                  onSelectionChanged: (s) {
+                    if (s.isNotEmpty) setState(() => _showHistory = s.first);
+                  },
+                ),
+              ),
               const SizedBox(height: RitmaSpacing.md),
               AsyncStateView<List<ClassSessionModel>>(
                 value: sessionsAsync,
-                isEmpty: (list) => list.isEmpty,
-                emptyTitle: 'No sessions scheduled',
-                emptyMessage:
-                    'Tap New Session to publish a studio or gym class.',
+                isEmpty: (list) => _filterSessions(
+                  list,
+                  isInstructorOnly: isInstructorOnly,
+                  currentUserId: currentUserId,
+                ).isEmpty,
+                emptyTitle: _showHistory
+                    ? 'No past sessions'
+                    : 'No upcoming sessions scheduled',
+                emptyMessage: canManage
+                    ? 'Tap New Session to publish a studio or gym class.'
+                    : 'Assigned sessions will appear here once published.',
                 onRetry: () => ref.invalidate(classSessionsProvider),
-                data: (sessions) {
-                  final timeFmt = DateFormat.MMMEd().add_jm();
+                data: (rawSessions) {
+                  final sessions = _filterSessions(
+                    rawSessions,
+                    isInstructorOnly: isInstructorOnly,
+                    currentUserId: currentUserId,
+                  );
+
                   return LayoutBuilder(
                     builder: (context, constraints) {
                       final cols = constraints.maxWidth >= 820 ? 2 : 1;
@@ -109,6 +172,8 @@ class OpsScheduleRosterView extends ConsumerWidget {
                                     .toDouble()
                               : 0.0;
                           final roomLabel = roomNames[session.roomId];
+                          final tz = branchTz[session.branchId] ?? orgTz;
+
                           return SizedBox(
                             width: cardWidth,
                             child: Card(
@@ -159,7 +224,7 @@ class OpsScheduleRosterView extends ConsumerWidget {
                                     ),
                                     const SizedBox(height: RitmaSpacing.xxs),
                                     Text(
-                                      '${timeFmt.format(session.startsAt.toLocal())}'
+                                      '${RitmaTimezone.formatDateTime(session.startsAt, tz)}'
                                       '${session.instructorDisplayName.isNotEmpty ? ' • ${session.instructorDisplayName}' : ''}'
                                       '${roomLabel != null ? ' • $roomLabel' : ''}',
                                       style: Theme.of(context)
@@ -203,16 +268,51 @@ class OpsScheduleRosterView extends ConsumerWidget {
                                           ),
                                           label: const Text('Live Roster'),
                                         ),
-                                        if (canManage && !cancelled)
+                                        if (canManage && !cancelled) ...[
+                                          OutlinedButton.icon(
+                                            onPressed: () async {
+                                              final updated =
+                                                  await showDialog<
+                                                    ClassSessionModel
+                                                  >(
+                                                    context: context,
+                                                    builder: (_) =>
+                                                        _EditClassSessionDialog(
+                                                          session: session,
+                                                        ),
+                                                  );
+                                              if (updated != null &&
+                                                  context.mounted) {
+                                                RitmaSync.afterBookingMutation(
+                                                  ref,
+                                                  sessionId: updated.id,
+                                                );
+                                                ScaffoldMessenger.of(
+                                                  context,
+                                                ).showSnackBar(
+                                                  SnackBar(
+                                                    content: Text(
+                                                      'Session "${updated.title}" updated.',
+                                                    ),
+                                                  ),
+                                                );
+                                              }
+                                            },
+                                            icon: const Icon(
+                                              Icons.edit_outlined,
+                                              size: 16,
+                                            ),
+                                            label: const Text('Edit'),
+                                          ),
                                           OutlinedButton(
                                             onPressed: () => _cancelSession(
                                               context,
-                                              ref,
                                               orgId: workspace.organizationId,
                                               sessionId: session.id,
                                             ),
                                             child: const Text('Cancel Session'),
                                           ),
+                                        ],
                                       ],
                                     ),
                                   ],
@@ -233,9 +333,25 @@ class OpsScheduleRosterView extends ConsumerWidget {
     );
   }
 
+  List<ClassSessionModel> _filterSessions(
+    List<ClassSessionModel> list, {
+    required bool isInstructorOnly,
+    required String? currentUserId,
+  }) {
+    final now = DateTime.now().toUtc();
+    return list.where((s) {
+      if (isInstructorOnly &&
+          currentUserId != null &&
+          s.instructorUserId != currentUserId) {
+        return false;
+      }
+      final isPast = !s.endsAt.toUtc().isAfter(now);
+      return _showHistory ? isPast : !isPast;
+    }).toList();
+  }
+
   Future<void> _cancelSession(
-    BuildContext context,
-    WidgetRef ref, {
+    BuildContext context, {
     required String orgId,
     required String sessionId,
   }) async {
@@ -274,8 +390,7 @@ class OpsScheduleRosterView extends ConsumerWidget {
     }
     res.when(
       success: (_) {
-        ref.invalidate(classSessionsProvider);
-        ref.invalidate(memberBookingsProvider);
+        RitmaSync.afterBookingMutation(ref, sessionId: sessionId);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Session cancelled & credits refunded.'),
@@ -299,6 +414,9 @@ class _SessionRosterSheet extends ConsumerWidget {
     final workspace = ref.watch(activeWorkspaceProvider);
     final rosterAsync = ref.watch(sessionRosterProvider(session.id));
     final canMark = ref.watch(hasPermissionProvider('attendance.mark'));
+    final canManageBookings = ref.watch(
+      hasPermissionProvider('booking.manage'),
+    );
 
     return DraggableScrollableSheet(
       initialChildSize: 0.72,
@@ -313,9 +431,39 @@ class _SessionRosterSheet extends ConsumerWidget {
               title: session.title,
               subtitle:
                   'Roster (${session.confirmedCount}/${session.capacity} confirmed)',
-              trailing: IconButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                icon: const Icon(Icons.close),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (canManageBookings &&
+                      session.status == SessionStatus.scheduled &&
+                      workspace != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: RitmaSpacing.xs),
+                      child: FilledButton.tonalIcon(
+                        onPressed: () async {
+                          final booked = await showDialog<bool>(
+                            context: context,
+                            builder: (_) => _FrontDeskBookMemberDialog(
+                              orgId: workspace.organizationId,
+                              sessionId: session.id,
+                            ),
+                          );
+                          if (booked == true && context.mounted) {
+                            RitmaSync.afterBookingMutation(
+                              ref,
+                              sessionId: session.id,
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.person_add_outlined, size: 16),
+                        label: const Text('Book Member'),
+                      ),
+                    ),
+                  IconButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
               ),
             ),
           ),
@@ -366,38 +514,65 @@ class _SessionRosterSheet extends ConsumerWidget {
                               ),
                             ],
                           ),
-                          if (canMark &&
-                              workspace != null &&
-                              entry.status == BookingStatus.confirmed) ...[
+                          if (workspace != null &&
+                              ((canMark &&
+                                      entry.status ==
+                                          BookingStatus.confirmed) ||
+                                  (canManageBookings &&
+                                      (entry.status ==
+                                              BookingStatus.confirmed ||
+                                          entry.status ==
+                                              BookingStatus.waitlisted)))) ...[
                             const SizedBox(height: RitmaSpacing.xs),
                             Wrap(
                               spacing: RitmaSpacing.xs,
                               children: [
-                                OutlinedButton.icon(
-                                  onPressed: () => _mark(
-                                    context,
-                                    ref,
-                                    orgId: workspace.organizationId,
-                                    bookingId: entry.bookingId,
-                                    status: AttendanceStatus.checkedIn,
+                                if (canMark &&
+                                    entry.status ==
+                                        BookingStatus.confirmed) ...[
+                                  OutlinedButton.icon(
+                                    onPressed: () => _mark(
+                                      context,
+                                      ref,
+                                      orgId: workspace.organizationId,
+                                      bookingId: entry.bookingId,
+                                      status: AttendanceStatus.checkedIn,
+                                    ),
+                                    icon: const Icon(Icons.check, size: 16),
+                                    label: const Text('Checked In'),
                                   ),
-                                  icon: const Icon(Icons.check, size: 16),
-                                  label: const Text('Checked In'),
-                                ),
-                                OutlinedButton.icon(
-                                  onPressed: () => _mark(
-                                    context,
-                                    ref,
-                                    orgId: workspace.organizationId,
-                                    bookingId: entry.bookingId,
-                                    status: AttendanceStatus.noShow,
+                                  OutlinedButton.icon(
+                                    onPressed: () => _mark(
+                                      context,
+                                      ref,
+                                      orgId: workspace.organizationId,
+                                      bookingId: entry.bookingId,
+                                      status: AttendanceStatus.noShow,
+                                    ),
+                                    icon: const Icon(
+                                      Icons.person_off_outlined,
+                                      size: 16,
+                                    ),
+                                    label: const Text('No Show'),
                                   ),
-                                  icon: const Icon(
-                                    Icons.person_off_outlined,
-                                    size: 16,
+                                ],
+                                if (canManageBookings &&
+                                    (entry.status == BookingStatus.confirmed ||
+                                        entry.status ==
+                                            BookingStatus.waitlisted))
+                                  TextButton.icon(
+                                    onPressed: () => _cancelMemberBooking(
+                                      context,
+                                      ref,
+                                      orgId: workspace.organizationId,
+                                      bookingId: entry.bookingId,
+                                    ),
+                                    icon: const Icon(
+                                      Icons.cancel_outlined,
+                                      size: 16,
+                                    ),
+                                    label: const Text('Cancel Booking'),
                                   ),
-                                  label: const Text('No Show'),
-                                ),
                               ],
                             ),
                           ],
@@ -422,25 +597,153 @@ class _SessionRosterSheet extends ConsumerWidget {
     required AttendanceStatus status,
   }) async {
     final repo = ref.read(bookingRepositoryProvider);
-    if (repo == null) {
-      return;
-    }
+    if (repo == null) return;
     final res = await repo.markAttendance(
       orgId: orgId,
       bookingId: bookingId,
       attendanceStatus: status,
     );
-    if (!context.mounted) {
-      return;
-    }
+    if (!context.mounted) return;
     res.when(
-      success: (_) {
-        ref.invalidate(sessionRosterProvider(session.id));
-        ref.invalidate(memberBookingsProvider);
+      success: (_) =>
+          RitmaSync.afterBookingMutation(ref, sessionId: session.id),
+      failure: (failure) =>
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(failure.message))),
+    );
+  }
+
+  Future<void> _cancelMemberBooking(
+    BuildContext context,
+    WidgetRef ref, {
+    required String orgId,
+    required String bookingId,
+  }) async {
+    final repo = ref.read(bookingRepositoryProvider);
+    if (repo == null) return;
+    final res = await repo.cancelClassBooking(
+      orgId: orgId,
+      bookingId: bookingId,
+      reason: 'Cancelled at desk',
+    );
+    if (!context.mounted) return;
+    res.when(
+      success: (out) {
+        RitmaSync.afterBookingMutation(ref, sessionId: session.id);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              out.refundedCredits > 0
+                  ? 'Booking cancelled & refunded ${out.refundedCredits} credit(s).'
+                  : 'Booking cancelled.',
+            ),
+          ),
+        );
       },
       failure: (failure) =>
           ScaffoldMessenger.of(context)
               .showSnackBar(SnackBar(content: Text(failure.message))),
+    );
+  }
+}
+
+class _FrontDeskBookMemberDialog extends ConsumerStatefulWidget {
+  const _FrontDeskBookMemberDialog({
+    required this.orgId,
+    required this.sessionId,
+  });
+
+  final String orgId;
+  final String sessionId;
+
+  @override
+  ConsumerState<_FrontDeskBookMemberDialog> createState() =>
+      _FrontDeskBookMemberDialogState();
+}
+
+class _FrontDeskBookMemberDialogState
+    extends ConsumerState<_FrontDeskBookMemberDialog> {
+  String? _memberId;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  Widget build(BuildContext context) {
+    final members =
+        (ref.watch(membersListProvider).asData?.value ?? const <MemberModel>[])
+            .where((m) => m.status == MemberStatus.active)
+            .toList();
+    _memberId ??= members.firstOrNull?.id;
+
+    return AlertDialog(
+      title: const Text('Book Member Into Session'),
+      content: SizedBox(
+        width: 380,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_error != null) ...[
+              Text(
+                _error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+              const SizedBox(height: RitmaSpacing.sm),
+            ],
+            if (members.isEmpty)
+              const Text('No active members available in roster.')
+            else
+              DropdownButtonFormField<String>(
+                initialValue: _memberId,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Member'),
+                items: members
+                    .map(
+                      (m) => DropdownMenuItem(
+                        value: m.id,
+                        child: Text(
+                          '${m.fullName} (${m.memberCode})',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (v) => setState(() => _memberId = v),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _saving ? null : () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: (_saving || _memberId == null)
+              ? null
+              : () async {
+                  final repo = ref.read(bookingRepositoryProvider);
+                  if (repo == null) return;
+                  setState(() {
+                    _saving = true;
+                    _error = null;
+                  });
+                  final res = await repo.bookClassSession(
+                    orgId: widget.orgId,
+                    sessionId: widget.sessionId,
+                    memberId: _memberId!,
+                    idempotencyKey: const Uuid().v4(),
+                  );
+                  if (!context.mounted) return;
+                  setState(() => _saving = false);
+                  res.when(
+                    success: (_) => Navigator.of(context).pop(true),
+                    failure: (f) => setState(() => _error = f.message),
+                  );
+                },
+          child: Text(_saving ? 'Booking...' : 'Confirm'),
+        ),
+      ],
     );
   }
 }
@@ -466,6 +769,7 @@ class _CreateClassSessionDialogState
   String? _branchId;
   String? _roomId;
   String? _classTypeId;
+  String? _selectedInstructorUserId;
   int _startOffsetHours = 24;
   int _durationMinutes = 60;
   bool _waitlistEnabled = true;
@@ -565,9 +869,7 @@ class _CreateClassSessionDialogState
           roomType: 'studio',
           defaultCapacity: capacity,
         );
-        if (!mounted) {
-          return;
-        }
+        if (!mounted) return;
         final createdRoom = roomResult.when(
           success: (room) => room,
           failure: (failure) {
@@ -577,9 +879,7 @@ class _CreateClassSessionDialogState
             return null;
           },
         );
-        if (createdRoom == null) {
-          return;
-        }
+        if (createdRoom == null) return;
         resolvedRoomId = createdRoom.id;
         _roomId = createdRoom.id;
         ref.invalidate(orgRoomsProvider);
@@ -600,9 +900,7 @@ class _CreateClassSessionDialogState
           orgId: workspace.organizationId,
           name: _newClassTypeController.text.trim(),
         );
-        if (!mounted) {
-          return;
-        }
+        if (!mounted) return;
         final createdType = typeResult.when(
           success: (classType) => classType,
           failure: (failure) {
@@ -613,9 +911,7 @@ class _CreateClassSessionDialogState
             return null;
           },
         );
-        if (createdType == null) {
-          return;
-        }
+        if (createdType == null) return;
         resolvedClassTypeId = createdType.id;
         _classTypeId = createdType.id;
         ref.invalidate(orgClassTypesProvider);
@@ -632,6 +928,9 @@ class _CreateClassSessionDialogState
         AuthenticatedSession(:final user) => user.id,
         _ => null,
       };
+      final resolvedInstructorId =
+          _selectedInstructorUserId ??
+          (workspace.roleCode == 'instructor' ? currentUserId : null);
 
       final res = await repo.createClassSession(
         orgId: workspace.organizationId,
@@ -645,14 +944,10 @@ class _CreateClassSessionDialogState
         creditCost: creditCost,
         cancellationCutoffAt: cutoff,
         waitlistEnabled: _waitlistEnabled,
-        instructorUserId: workspace.roleCode == 'instructor'
-            ? currentUserId
-            : null,
+        instructorUserId: resolvedInstructorId,
         instructorDisplayName: _instructorController.text.trim(),
       );
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
       res.when(
         success: (session) => Navigator.of(context).pop(session),
         failure: (failure) => setState(() => _errorMessage = failure.message),
@@ -697,6 +992,10 @@ class _CreateClassSessionDialogState
     ]);
 
     _branchId ??= workspace?.branchId ?? branches.firstOrNull?.id;
+    final instructors =
+        ref.watch(assignableInstructorsProvider(_branchId)).asData?.value ??
+        const <AssignableInstructor>[];
+
     final filteredRooms = rooms
         .where(
           (r) => r.isActive && (_branchId == null || r.branchId == _branchId),
@@ -807,6 +1106,7 @@ class _CreateClassSessionDialogState
                     onChanged: (v) => setState(() {
                       _branchId = v;
                       _roomId = null;
+                      _selectedInstructorUserId = null;
                       _errorMessage = null;
                     }),
                   ),
@@ -913,6 +1213,50 @@ class _CreateClassSessionDialogState
                     const _SetupNoticeBanner(
                       message: 'No class types are configured yet. Ask an Organization Owner or Admin to add a class type.',
                     ),
+                  const SizedBox(height: RitmaSpacing.xs),
+                ],
+                if (instructors.isNotEmpty) ...[
+                  DropdownButtonFormField<String?>(
+                    key: ValueKey(
+                      'instr-${_selectedInstructorUserId ?? 'none'}',
+                    ),
+                    initialValue:
+                        instructors.any(
+                          (i) => i.userId == _selectedInstructorUserId,
+                        )
+                        ? _selectedInstructorUserId
+                        : null,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Assign Staff Instructor',
+                    ),
+                    items: [
+                      const DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('Custom / Unassigned Account'),
+                      ),
+                      ...instructors.map(
+                        (i) => DropdownMenuItem<String?>(
+                          value: i.userId,
+                          child: Text(
+                            '${i.displayName} (${i.roleDisplayName})',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                    ],
+                    onChanged: (val) => setState(() {
+                      _selectedInstructorUserId = val;
+                      if (val != null) {
+                        final picked = instructors
+                            .where((i) => i.userId == val)
+                            .firstOrNull;
+                        if (picked != null) {
+                          _instructorController.text = picked.displayName;
+                        }
+                      }
+                    }),
+                  ),
                   const SizedBox(height: RitmaSpacing.xs),
                 ],
                 TextFormField(
@@ -1063,6 +1407,273 @@ class _CreateClassSessionDialogState
         FilledButton(
           onPressed: (_saving || isLoadingPrerequisites) ? null : _submit,
           child: Text(_saving ? 'Publishing...' : 'Publish Session'),
+        ),
+      ],
+    );
+  }
+}
+
+class _EditClassSessionDialog extends ConsumerStatefulWidget {
+  const _EditClassSessionDialog({required this.session});
+
+  final ClassSessionModel session;
+
+  @override
+  ConsumerState<_EditClassSessionDialog> createState() =>
+      _EditClassSessionDialogState();
+}
+
+class _EditClassSessionDialogState
+    extends ConsumerState<_EditClassSessionDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _titleCtrl;
+  late final TextEditingController _instructorCtrl;
+  late final TextEditingController _capacityCtrl;
+  late final TextEditingController _creditCostCtrl;
+  late String _roomId;
+  late String _classTypeId;
+  String? _selectedInstructorUserId;
+  late bool _waitlistEnabled;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final s = widget.session;
+    _titleCtrl = TextEditingController(text: s.title);
+    _instructorCtrl = TextEditingController(text: s.instructorDisplayName);
+    _capacityCtrl = TextEditingController(text: '${s.capacity}');
+    _creditCostCtrl = TextEditingController(text: '${s.creditCost}');
+    _roomId = s.roomId;
+    _classTypeId = s.classTypeId;
+    _selectedInstructorUserId = s.instructorUserId;
+    _waitlistEnabled = s.waitlistEnabled;
+  }
+
+  @override
+  void dispose() {
+    _titleCtrl.dispose();
+    _instructorCtrl.dispose();
+    _capacityCtrl.dispose();
+    _creditCostCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    final repo = ref.read(bookingRepositoryProvider);
+    if (repo == null) return;
+    final cap = int.tryParse(_capacityCtrl.text.trim()) ?? 1;
+    final cost = int.tryParse(_creditCostCtrl.text.trim()) ?? 1;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    final res = await repo.updateClassSession(
+      orgId: widget.session.organizationId,
+      sessionId: widget.session.id,
+      roomId: _roomId,
+      classTypeId: _classTypeId,
+      title: _titleCtrl.text,
+      startsAt: widget.session.startsAt,
+      endsAt: widget.session.endsAt,
+      capacity: cap,
+      creditCost: cost,
+      cancellationCutoffAt: widget.session.cancellationCutoffAt,
+      waitlistEnabled: _waitlistEnabled,
+      instructorUserId: _selectedInstructorUserId,
+      instructorDisplayName: _instructorCtrl.text,
+    );
+    if (!mounted) return;
+    setState(() => _saving = false);
+    res.when(
+      success: (updated) => Navigator.of(context).pop(updated),
+      failure: (f) => setState(() => _error = f.message),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rooms =
+        (ref.watch(orgRoomsProvider).asData?.value ?? const <RoomModel>[])
+            .where((r) => r.branchId == widget.session.branchId && r.isActive)
+            .toList();
+    final classTypes =
+        (ref.watch(orgClassTypesProvider).asData?.value ??
+                const <ClassTypeModel>[])
+            .where((ct) => ct.isActive)
+            .toList();
+    final instructors =
+        ref
+            .watch(assignableInstructorsProvider(widget.session.branchId))
+            .asData
+            ?.value ??
+        const <AssignableInstructor>[];
+
+    return AlertDialog(
+      title: const Text('Edit Class Session'),
+      content: SizedBox(
+        width: 440,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (_error != null) ...[
+                  Text(
+                    _error!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                  const SizedBox(height: RitmaSpacing.sm),
+                ],
+                TextFormField(
+                  controller: _titleCtrl,
+                  decoration: const InputDecoration(labelText: 'Session Title'),
+                  validator: (v) =>
+                      (v == null || v.trim().length < 2) ? 'Min 2 chars' : null,
+                ),
+                if (rooms.any((r) => r.id == _roomId)) ...[
+                  const SizedBox(height: RitmaSpacing.xs),
+                  DropdownButtonFormField<String>(
+                    initialValue: _roomId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'Room'),
+                    items: rooms
+                        .map(
+                          (r) => DropdownMenuItem(
+                            value: r.id,
+                            child: Text(r.name),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) setState(() => _roomId = v);
+                    },
+                  ),
+                ],
+                if (classTypes.any((c) => c.id == _classTypeId)) ...[
+                  const SizedBox(height: RitmaSpacing.xs),
+                  DropdownButtonFormField<String>(
+                    initialValue: _classTypeId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'Class Type'),
+                    items: classTypes
+                        .map(
+                          (c) => DropdownMenuItem(
+                            value: c.id,
+                            child: Text(c.name),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) setState(() => _classTypeId = v);
+                    },
+                  ),
+                ],
+                if (instructors.isNotEmpty) ...[
+                  const SizedBox(height: RitmaSpacing.xs),
+                  DropdownButtonFormField<String?>(
+                    initialValue:
+                        instructors.any(
+                          (i) => i.userId == _selectedInstructorUserId,
+                        )
+                        ? _selectedInstructorUserId
+                        : null,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Assigned Instructor',
+                    ),
+                    items: [
+                      const DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('Unassigned Account'),
+                      ),
+                      ...instructors.map(
+                        (i) => DropdownMenuItem<String?>(
+                          value: i.userId,
+                          child: Text(
+                            '${i.displayName} (${i.roleDisplayName})',
+                          ),
+                        ),
+                      ),
+                    ],
+                    onChanged: (val) => setState(() {
+                      _selectedInstructorUserId = val;
+                      if (val != null) {
+                        final match = instructors
+                            .where((i) => i.userId == val)
+                            .firstOrNull;
+                        if (match != null) {
+                          _instructorCtrl.text = match.displayName;
+                        }
+                      }
+                    }),
+                  ),
+                ],
+                const SizedBox(height: RitmaSpacing.xs),
+                TextFormField(
+                  controller: _instructorCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Instructor Name',
+                  ),
+                ),
+                const SizedBox(height: RitmaSpacing.xs),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _capacityCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Capacity',
+                        ),
+                        validator: (v) {
+                          final n = int.tryParse((v ?? '').trim());
+                          if (n == null ||
+                              n < widget.session.confirmedCount ||
+                              n < 1) {
+                            return 'Min ${widget.session.confirmedCount}';
+                          }
+                          return null;
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: RitmaSpacing.xs),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _creditCostCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Credit Cost',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: _waitlistEnabled,
+                  onChanged: (v) => setState(() => _waitlistEnabled = v),
+                  title: const Text('Enable Automatic Waitlist'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _saving ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _saving ? null : _submit,
+          child: Text(_saving ? 'Saving...' : 'Save Changes'),
         ),
       ],
     );

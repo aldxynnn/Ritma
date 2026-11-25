@@ -15,7 +15,7 @@ class SupabasePaymentRepository extends BaseRepository
   static const String _columns =
       'id, organization_id, branch_id, member_id, subscription_id, '
       'amount_minor, currency_code, method, status, external_reference, paid_at, '
-      'members(full_name)';
+      'refunded_amount_minor, refund_reason, refunded_at, members(full_name)';
 
   PaymentRecordModel _mapPayment(Map<dynamic, dynamic> raw) {
     final map = Map<String, dynamic>.from(raw);
@@ -63,5 +63,54 @@ class SupabasePaymentRepository extends BaseRepository
           .limit(limit);
       return rows.map(_mapPayment).toList();
     }, operation: 'fetchMemberPayments');
+  }
+
+  @override
+  Future<Result<List<PaymentRefundModel>>> fetchPaymentRefunds({
+    required String orgId,
+    required String paymentId,
+  }) {
+    return guard(() async {
+      final rows = await _client
+          .from('payment_refunds')
+          .select(
+            'id, organization_id, branch_id, payment_id, member_id, '
+            'amount_minor, currency_code, refund_channel, reason, '
+            'external_reference, refunded_by, created_at',
+          )
+          .eq('organization_id', orgId)
+          .eq('payment_id', paymentId)
+          .order('created_at', ascending: false);
+      return rows
+          .map((r) => PaymentRefundModel.fromJson(Map<String, dynamic>.from(r)))
+          .toList();
+    }, operation: 'fetchPaymentRefunds');
+  }
+
+  @override
+  Future<Result<RefundOutcome>> recordPaymentRefund({
+    required String orgId,
+    required String paymentId,
+    required int amountMinor,
+    required String reason,
+    required String idempotencyKey,
+    String? externalReference,
+  }) {
+    return guard(() async {
+      final raw = await _client.rpc<dynamic>(
+        'record_payment_refund',
+        params: <String, dynamic>{
+          'p_org_id': orgId,
+          'p_payment_id': paymentId,
+          'p_amount_minor': amountMinor,
+          'p_reason': reason.trim(),
+          'p_idempotency_key': idempotencyKey,
+          'p_external_reference': externalReference?.trim().isEmpty ?? true
+              ? null
+              : externalReference!.trim(),
+        },
+      );
+      return RefundOutcome.fromJson(Map<String, dynamic>.from(raw as Map));
+    }, operation: 'recordPaymentRefund');
   }
 }

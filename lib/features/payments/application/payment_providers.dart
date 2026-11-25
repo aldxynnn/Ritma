@@ -56,3 +56,20 @@ final memberPaymentsProvider =
         failure: (failure) => throw AppException(failure),
       );
     });
+
+final paymentRefundsProvider = FutureProvider.autoDispose
+    .family<List<PaymentRefundModel>, String>((ref, paymentId) async {
+      final workspace = ref.watch(activeWorkspaceProvider);
+      final repo = ref.watch(paymentRepositoryProvider);
+      if (workspace == null || repo == null) {
+        return const <PaymentRefundModel>[];
+      }
+      final res = await repo.fetchPaymentRefunds(
+        orgId: workspace.organizationId,
+        paymentId: paymentId,
+      );
+      return res.when(
+        success: (list) => list,
+        failure: (failure) => throw AppException(failure),
+      );
+    });

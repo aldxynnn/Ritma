@@ -143,3 +143,16 @@ abstract class CancelBookingOutcome with _$CancelBookingOutcome {
   factory CancelBookingOutcome.fromJson(Map<String, dynamic> json) =>
       _$CancelBookingOutcomeFromJson(json);
 }
+
+@freezed
+abstract class AssignableInstructor with _$AssignableInstructor {
+  const factory AssignableInstructor({
+    @JsonKey(name: 'user_id') required String userId,
+    @JsonKey(name: 'display_name') required String displayName,
+    @JsonKey(name: 'role_code') @Default('') String roleCode,
+    @JsonKey(name: 'role_display_name') @Default('') String roleDisplayName,
+  }) = _AssignableInstructor;
+
+  factory AssignableInstructor.fromJson(Map<String, dynamic> json) =>
+      _$AssignableInstructorFromJson(json);
+}

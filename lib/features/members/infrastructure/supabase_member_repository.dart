@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
 import '../../../core/repository/base_repository.dart';
 import '../../../core/result/result.dart';
+import '../../../core/utils/postgrest_filter_utils.dart';
 import '../domain/member_model.dart';
 import '../domain/member_repository.dart';
 
@@ -35,9 +36,16 @@ class SupabaseMemberRepository extends BaseRepository
       if (statusFilter != null) {
         builder = builder.eq('status', statusFilter.name);
       }
-      if (query != null && query.trim().isNotEmpty) {
-        final q = query.trim();
-        builder = builder.or('full_name.ilike.%$q%,member_code.ilike.%$q%');
+      if (query != null) {
+        final filter = buildPostgrestIlikeOrFilter(const <String>[
+          'full_name',
+          'member_code',
+          'email',
+          'phone',
+        ], query);
+        if (filter != null) {
+          builder = builder.or(filter);
+        }
       }
 
       final rows = await builder.order('full_name', ascending: true);
@@ -81,6 +89,68 @@ class SupabaseMemberRepository extends BaseRepository
           .single();
       return MemberModel.fromJson(Map<String, dynamic>.from(row));
     }, operation: 'registerMember');
+  }
+
+  @override
+  Future<Result<MemberModel>> updateMember({
+    required String orgId,
+    required String memberId,
+    required String homeBranchId,
+    required String fullName,
+    String? email,
+    String? phone,
+    String? emergencyContactName,
+    String? emergencyContactPhone,
+  }) {
+    return guard(() async {
+      final row = await _client
+          .from('members')
+          .update(<String, dynamic>{
+            'home_branch_id': homeBranchId,
+            'full_name': fullName.trim(),
+            'email': email?.trim().isEmpty ?? true ? null : email!.trim(),
+            'phone': phone?.trim().isEmpty ?? true ? null : phone!.trim(),
+            'emergency_contact_name':
+                emergencyContactName?.trim().isEmpty ?? true
+                ? null
+                : emergencyContactName!.trim(),
+            'emergency_contact_phone':
+                emergencyContactPhone?.trim().isEmpty ?? true
+                ? null
+                : emergencyContactPhone!.trim(),
+          })
+          .eq('organization_id', orgId)
+          .eq('id', memberId)
+          .select(_columns)
+          .single();
+      return MemberModel.fromJson(Map<String, dynamic>.from(row));
+    }, operation: 'updateMember');
+  }
+
+  @override
+  Future<Result<void>> updateMyMemberContact({
+    required String orgId,
+    String? phone,
+    String? emergencyContactName,
+    String? emergencyContactPhone,
+  }) {
+    return guard(() async {
+      await _client.rpc<void>(
+        'update_my_member_contact',
+        params: <String, dynamic>{
+          'p_org_id': orgId,
+          'p_phone': phone?.trim().isEmpty ?? true ? null : phone!.trim(),
+          'p_emergency_contact_name':
+              emergencyContactName?.trim().isEmpty ?? true
+              ? null
+              : emergencyContactName!.trim(),
+          'p_emergency_contact_phone':
+              emergencyContactPhone?.trim().isEmpty ?? true
+              ? null
+              : emergencyContactPhone!.trim(),
+        },
+      );
+    }, operation: 'updateMyMemberContact');
   }
 
   @override

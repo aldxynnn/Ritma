@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/state/ritma_sync.dart';
 import '../../../core/theme/ritma_spacing.dart';
 import '../../../core/widgets/async_state_view.dart';
 import '../../../core/widgets/ritma_page_container.dart';
@@ -43,8 +47,7 @@ class MembersDirectoryView extends ConsumerWidget {
             children: [
               RitmaSectionHeader(
                 title: 'Member Directory',
-                subtitle:
-                    'Branch-scoped member profiles, status, and entitlements',
+                subtitle: 'Branch-scoped member profiles, status, claim onboarding, and entitlements',
                 trailing: canWriteMembers
                     ? FilledButton.icon(
                         onPressed: () => _showRegisterMemberDialog(
@@ -59,15 +62,7 @@ class MembersDirectoryView extends ConsumerWidget {
                     : null,
               ),
               const SizedBox(height: RitmaSpacing.sm),
-              TextField(
-                decoration: const InputDecoration(
-                  labelText: 'Search by name or member code',
-                  prefixIcon: Icon(Icons.search),
-                ),
-                onChanged: (value) => ref
-                    .read(memberSearchQueryProvider.notifier)
-                    .setQuery(value),
-              ),
+              const _MemberSearchField(),
               const SizedBox(height: RitmaSpacing.xs),
               Wrap(
                 spacing: RitmaSpacing.xs,
@@ -85,6 +80,7 @@ class MembersDirectoryView extends ConsumerWidget {
                     MemberStatus.active,
                     MemberStatus.frozen,
                     MemberStatus.suspended,
+                    MemberStatus.archived,
                   ].map(
                     (st) => FilterChip(
                       label: Text(st.displayLabel),
@@ -135,7 +131,7 @@ class MembersDirectoryView extends ConsumerWidget {
                       ),
                       title: Text(m.fullName),
                       subtitle: Text(
-                        '${m.memberCode}${m.email != null ? ' • ${m.email}' : ''}',
+                        '${m.memberCode}${m.email != null ? ' • ${m.email}' : ''}${m.userId == null ? ' • Unclaimed' : ''}',
                       ),
                       trailing: RitmaStatusPill(
                         label: m.status.displayLabel,
@@ -268,8 +264,8 @@ class _RegisterMemberDialogState extends ConsumerState<_RegisterMemberDialog> {
     }
     setState(() => _saving = false);
     res.when(
-      success: (_) {
-        ref.invalidate(membersListProvider);
+      success: (created) {
+        RitmaSync.afterMemberMutation(ref, memberId: created.id);
         Navigator.of(context).pop(memberName);
       },
       failure: (f) => setState(() => _inlineError = f.message),
@@ -389,6 +385,110 @@ class _MemberDetailSheet extends ConsumerWidget {
 
   final MemberModel member;
 
+  Future<void> _setStatus(
+    BuildContext context,
+    WidgetRef ref,
+    MemberStatus status,
+  ) async {
+    final repo = ref.read(memberRepositoryProvider);
+    if (repo == null) return;
+    final res = await repo.setMemberStatus(
+      orgId: member.organizationId,
+      memberId: member.id,
+      status: status,
+    );
+    if (!context.mounted) return;
+    res.when(
+      success: (_) {
+        RitmaSync.afterMemberMutation(ref, memberId: member.id);
+        Navigator.of(context).pop();
+      },
+      failure: (f) =>
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(f.message))),
+    );
+  }
+
+  Future<void> _generateClaimToken(BuildContext context, WidgetRef ref) async {
+    final emailCtrl = TextEditingController(text: member.email ?? '');
+    final email = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Generate Member Claim Token'),
+        content: TextField(
+          controller: emailCtrl,
+          keyboardType: TextInputType.emailAddress,
+          decoration: const InputDecoration(
+            labelText: 'Member Login Email',
+            hintText: 'member@example.com',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(emailCtrl.text.trim()),
+            child: const Text('Issue Token'),
+          ),
+        ],
+      ),
+    );
+    emailCtrl.dispose();
+    if (email == null || email.isEmpty || !context.mounted) return;
+
+    final repo = ref.read(memberRepositoryProvider);
+    if (repo == null) return;
+    final res = await repo.inviteMemberClaim(
+      orgId: member.organizationId,
+      memberId: member.id,
+      email: email,
+    );
+    if (!context.mounted) return;
+    res.when(
+      success: (token) => showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Member Claim Token Ready'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Share this single-use claim token with $email. It links to ${member.fullName} (${member.memberCode}) when pasted in the Workspace Picker:',
+                style: Theme.of(ctx).textTheme.bodySmall,
+              ),
+              const SizedBox(height: RitmaSpacing.sm),
+              SelectableText(token),
+            ],
+          ),
+          actions: [
+            OutlinedButton.icon(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: token));
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(content: Text('Claim token copied.')),
+                  );
+                }
+              },
+              icon: const Icon(Icons.copy, size: 16),
+              label: const Text('Copy Token'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      ),
+      failure: (f) =>
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(f.message))),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final canAssign = ref.watch(hasPermissionProvider('entitlement.assign'));
@@ -396,10 +496,18 @@ class _MemberDetailSheet extends ConsumerWidget {
     final canReadEntitlements = ref.watch(
       hasPermissionProvider('entitlement.read'),
     );
+    final liveMember =
+        ref
+            .watch(membersListProvider)
+            .asData
+            ?.value
+            .where((m) => m.id == member.id)
+            .firstOrNull ??
+        member;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(member.fullName),
+        title: Text(liveMember.fullName),
         actions: [
           if (canAssign)
             Padding(
@@ -409,9 +517,9 @@ class _MemberDetailSheet extends ConsumerWidget {
                   context: context,
                   isScrollControlled: true,
                   builder: (_) => AssignPackageSheet(
-                    memberId: member.id,
-                    memberName: member.fullName,
-                    homeBranchId: member.homeBranchId,
+                    memberId: liveMember.id,
+                    memberName: liveMember.fullName,
+                    homeBranchId: liveMember.homeBranchId,
                   ),
                 ),
                 icon: const Icon(Icons.add_card_outlined, size: 18),
@@ -430,70 +538,341 @@ class _MemberDetailSheet extends ConsumerWidget {
               runSpacing: RitmaSpacing.xs,
               children: [
                 RitmaStatusPill(
-                  label: member.memberCode,
+                  label: liveMember.memberCode,
                   icon: Icons.badge_outlined,
                 ),
                 RitmaStatusPill(
-                  label: member.status.displayLabel,
-                  tone: member.status == MemberStatus.active
+                  label: liveMember.status.displayLabel,
+                  tone: liveMember.status == MemberStatus.active
                       ? RitmaPillTone.success
-                      : RitmaPillTone.warning,
+                      : liveMember.status == MemberStatus.frozen
+                      ? RitmaPillTone.warning
+                      : RitmaPillTone.danger,
+                ),
+                RitmaStatusPill(
+                  label: liveMember.userId != null
+                      ? 'Account Linked'
+                      : 'Unclaimed Profile',
+                  tone: liveMember.userId != null
+                      ? RitmaPillTone.success
+                      : RitmaPillTone.neutral,
                 ),
               ],
             ),
+            const SizedBox(height: RitmaSpacing.xs),
+            if ((liveMember.email ?? '').isNotEmpty ||
+                (liveMember.phone ?? '').isNotEmpty ||
+                (liveMember.emergencyContactName ?? '').isNotEmpty)
+              Card(
+                margin: const EdgeInsets.only(top: RitmaSpacing.xs),
+                child: Padding(
+                  padding: const EdgeInsets.all(RitmaSpacing.sm),
+                  child: Text(
+                    [
+                      if ((liveMember.email ?? '').isNotEmpty)
+                        'Email: ${liveMember.email}',
+                      if ((liveMember.phone ?? '').isNotEmpty)
+                        'Phone: ${liveMember.phone}',
+                      if ((liveMember.emergencyContactName ?? '').isNotEmpty)
+                        'Emergency: ${liveMember.emergencyContactName} (${liveMember.emergencyContactPhone ?? '-'})',
+                    ].join('\n'),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              ),
             if (canWriteMember) ...[
               const SizedBox(height: RitmaSpacing.sm),
               Wrap(
                 spacing: RitmaSpacing.xs,
+                runSpacing: RitmaSpacing.xs,
                 children: [
-                  if (member.status != MemberStatus.frozen)
+                  OutlinedButton.icon(
+                    onPressed: () => showDialog<void>(
+                      context: context,
+                      builder: (_) => _EditMemberDialog(member: liveMember),
+                    ),
+                    icon: const Icon(Icons.edit_outlined, size: 16),
+                    label: const Text('Edit Details'),
+                  ),
+                  if (liveMember.userId == null)
+                    FilledButton.tonalIcon(
+                      onPressed: () => _generateClaimToken(context, ref),
+                      icon: const Icon(Icons.key_outlined, size: 16),
+                      label: const Text('Generate Claim Token'),
+                    ),
+                  if (liveMember.status != MemberStatus.frozen)
                     OutlinedButton(
-                      onPressed: () async {
-                        final repo = ref.read(memberRepositoryProvider);
-                        if (repo == null) {
-                          return;
-                        }
-                        await repo.setMemberStatus(
-                          orgId: member.organizationId,
-                          memberId: member.id,
-                          status: MemberStatus.frozen,
-                        );
-                        ref.invalidate(membersListProvider);
-                        if (context.mounted) {
-                          Navigator.of(context).pop();
-                        }
-                      },
+                      onPressed: () =>
+                          _setStatus(context, ref, MemberStatus.frozen),
                       child: const Text('Freeze Profile'),
                     ),
-                  if (member.status != MemberStatus.active)
+                  if (liveMember.status != MemberStatus.active)
                     OutlinedButton(
-                      onPressed: () async {
-                        final repo = ref.read(memberRepositoryProvider);
-                        if (repo == null) {
-                          return;
-                        }
-                        await repo.setMemberStatus(
-                          orgId: member.organizationId,
-                          memberId: member.id,
-                          status: MemberStatus.active,
-                        );
-                        ref.invalidate(membersListProvider);
-                        if (context.mounted) {
-                          Navigator.of(context).pop();
-                        }
-                      },
+                      onPressed: () =>
+                          _setStatus(context, ref, MemberStatus.active),
                       child: const Text('Reactivate Profile'),
+                    ),
+                  if (liveMember.status != MemberStatus.suspended)
+                    TextButton(
+                      onPressed: () =>
+                          _setStatus(context, ref, MemberStatus.suspended),
+                      child: const Text('Suspend'),
+                    ),
+                  if (liveMember.status != MemberStatus.archived)
+                    TextButton(
+                      onPressed: () =>
+                          _setStatus(context, ref, MemberStatus.archived),
+                      child: const Text('Archive'),
                     ),
                 ],
               ),
             ],
             if (canReadEntitlements) ...[
               const SizedBox(height: RitmaSpacing.md),
-              MemberEntitlementsPanel(memberId: member.id),
+              MemberEntitlementsPanel(memberId: liveMember.id),
             ],
           ],
         ),
       ),
+    );
+  }
+}
+
+class _EditMemberDialog extends ConsumerStatefulWidget {
+  const _EditMemberDialog({required this.member});
+
+  final MemberModel member;
+
+  @override
+  ConsumerState<_EditMemberDialog> createState() => _EditMemberDialogState();
+}
+
+class _EditMemberDialogState extends ConsumerState<_EditMemberDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _nameCtrl;
+  late final TextEditingController _emailCtrl;
+  late final TextEditingController _phoneCtrl;
+  late final TextEditingController _emergNameCtrl;
+  late final TextEditingController _emergPhoneCtrl;
+  late String _branchId;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final m = widget.member;
+    _nameCtrl = TextEditingController(text: m.fullName);
+    _emailCtrl = TextEditingController(text: m.email ?? '');
+    _phoneCtrl = TextEditingController(text: m.phone ?? '');
+    _emergNameCtrl = TextEditingController(text: m.emergencyContactName ?? '');
+    _emergPhoneCtrl = TextEditingController(
+      text: m.emergencyContactPhone ?? '',
+    );
+    _branchId = m.homeBranchId;
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _emailCtrl.dispose();
+    _phoneCtrl.dispose();
+    _emergNameCtrl.dispose();
+    _emergPhoneCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    final repo = ref.read(memberRepositoryProvider);
+    if (repo == null) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    final res = await repo.updateMember(
+      orgId: widget.member.organizationId,
+      memberId: widget.member.id,
+      homeBranchId: _branchId,
+      fullName: _nameCtrl.text,
+      email: _emailCtrl.text,
+      phone: _phoneCtrl.text,
+      emergencyContactName: _emergNameCtrl.text,
+      emergencyContactPhone: _emergPhoneCtrl.text,
+    );
+    if (!mounted) return;
+    setState(() => _saving = false);
+    res.when(
+      success: (_) {
+        RitmaSync.afterMemberMutation(ref, memberId: widget.member.id);
+        Navigator.of(context).pop();
+      },
+      failure: (f) => setState(() => _error = f.message),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final branches =
+        ref.watch(orgBranchesProvider).asData?.value ?? const <BranchModel>[];
+    final workspace = ref.watch(activeWorkspaceProvider);
+    return AlertDialog(
+      title: const Text('Edit Member Details'),
+      content: SizedBox(
+        width: 420,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (_error != null) ...[
+                  Text(
+                    _error!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                  const SizedBox(height: RitmaSpacing.sm),
+                ],
+                TextFormField(
+                  controller: _nameCtrl,
+                  decoration: const InputDecoration(labelText: 'Full Name'),
+                  validator: (v) =>
+                      (v == null || v.trim().length < 2) ? 'Min 2 chars' : null,
+                ),
+                const SizedBox(height: RitmaSpacing.xs),
+                if (workspace?.branchId == null &&
+                    branches.any((b) => b.id == _branchId)) ...[
+                  DropdownButtonFormField<String>(
+                    initialValue: _branchId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'Home Branch'),
+                    items: branches
+                        .map(
+                          (b) => DropdownMenuItem(
+                            value: b.id,
+                            child: Text(b.name),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) setState(() => _branchId = v);
+                    },
+                  ),
+                  const SizedBox(height: RitmaSpacing.xs),
+                ],
+                TextFormField(
+                  controller: _emailCtrl,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(labelText: 'Email'),
+                ),
+                const SizedBox(height: RitmaSpacing.xs),
+                TextFormField(
+                  controller: _phoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(labelText: 'Phone'),
+                ),
+                const SizedBox(height: RitmaSpacing.xs),
+                TextFormField(
+                  controller: _emergNameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Emergency Contact Name',
+                  ),
+                ),
+                const SizedBox(height: RitmaSpacing.xs),
+                TextFormField(
+                  controller: _emergPhoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(
+                    labelText: 'Emergency Contact Phone',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _saving ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _saving ? null : _submit,
+          child: Text(_saving ? 'Saving...' : 'Save Changes'),
+        ),
+      ],
+    );
+  }
+}
+
+class _MemberSearchField extends ConsumerStatefulWidget {
+  const _MemberSearchField();
+
+  @override
+  ConsumerState<_MemberSearchField> createState() => _MemberSearchFieldState();
+}
+
+class _MemberSearchFieldState extends ConsumerState<_MemberSearchField> {
+  late final TextEditingController _controller;
+  Timer? _debounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(
+      text: ref.read(memberSearchQueryProvider),
+    );
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 220), () {
+      if (!mounted) return;
+      ref.read(memberSearchQueryProvider.notifier).setQuery(value);
+    });
+  }
+
+  void _applyImmediately(String value) {
+    _debounce?.cancel();
+    ref.read(memberSearchQueryProvider.notifier).setQuery(value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: _controller,
+      builder: (context, value, _) {
+        return TextField(
+          controller: _controller,
+          textInputAction: TextInputAction.search,
+          decoration: InputDecoration(
+            labelText: 'Search by name, member code, email, or phone',
+            prefixIcon: const Icon(Icons.search),
+            suffixIcon: value.text.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: 'Clear search',
+                    icon: const Icon(Icons.close),
+                    onPressed: () {
+                      _controller.clear();
+                      _applyImmediately('');
+                    },
+                  ),
+          ),
+          onChanged: _onChanged,
+          onSubmitted: _applyImmediately,
+        );
+      },
     );
   }
 }

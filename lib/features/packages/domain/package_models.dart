@@ -41,6 +41,12 @@ enum BranchAccessScope {
 
   const BranchAccessScope(this.label);
   final String label;
+
+  String get dbValue => switch (this) {
+    BranchAccessScope.singleBranch => 'single_branch',
+    BranchAccessScope.selectedBranches => 'selected_branches',
+    BranchAccessScope.allBranches => 'all_branches',
+  };
 }
 
 enum ClassScope {

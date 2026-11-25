@@ -1476,4 +1476,283 @@ as bool,
 
 }
 
+
+/// @nodoc
+mixin _$AssignableInstructor {
+
+@JsonKey(name: 'user_id') String get userId;@JsonKey(name: 'display_name') String get displayName;@JsonKey(name: 'role_code') String get roleCode;@JsonKey(name: 'role_display_name') String get roleDisplayName;
+/// Create a copy of AssignableInstructor
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$AssignableInstructorCopyWith<AssignableInstructor> get copyWith => _$AssignableInstructorCopyWithImpl<AssignableInstructor>(this as AssignableInstructor, _$identity);
+
+  /// Serializes this AssignableInstructor to a JSON map.
+  Map<String, dynamic> toJson();
+
+
+@override
+bool operator ==(Object other) {
+  final _this = this as AssignableInstructor;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AssignableInstructor&&(identical(other.userId, _this.userId) || other.userId == _this.userId)&&(identical(other.displayName, _this.displayName) || other.displayName == _this.displayName)&&(identical(other.roleCode, _this.roleCode) || other.roleCode == _this.roleCode)&&(identical(other.roleDisplayName, _this.roleDisplayName) || other.roleDisplayName == _this.roleDisplayName));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+  final _this = this as AssignableInstructor;
+  return Object.hash(runtimeType,_this.userId,_this.displayName,_this.roleCode,_this.roleDisplayName);
+}
+
+@override
+String toString() {
+  final _this = this as AssignableInstructor;
+  return 'AssignableInstructor(userId: ${_this.userId}, displayName: ${_this.displayName}, roleCode: ${_this.roleCode}, roleDisplayName: ${_this.roleDisplayName})';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $AssignableInstructorCopyWith<$Res>  {
+  factory $AssignableInstructorCopyWith(AssignableInstructor value, $Res Function(AssignableInstructor) _then) = _$AssignableInstructorCopyWithImpl;
+@useResult
+$Res call({
+@JsonKey(name: 'user_id') String userId,@JsonKey(name: 'display_name') String displayName,@JsonKey(name: 'role_code') String roleCode,@JsonKey(name: 'role_display_name') String roleDisplayName
+});
+
+
+
+
+}
+/// @nodoc
+class _$AssignableInstructorCopyWithImpl<$Res>
+    implements $AssignableInstructorCopyWith<$Res> {
+  _$AssignableInstructorCopyWithImpl(this._self, this._then);
+
+  final AssignableInstructor _self;
+  final $Res Function(AssignableInstructor) _then;
+
+/// Create a copy of AssignableInstructor
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') @override $Res call({Object? userId = null,Object? displayName = null,Object? roleCode = null,Object? roleDisplayName = null,}) {
+  return _then(AssignableInstructor(
+userId: null == userId ? _self.userId : userId // ignore: cast_nullable_to_non_nullable
+as String,displayName: null == displayName ? _self.displayName : displayName // ignore: cast_nullable_to_non_nullable
+as String,roleCode: null == roleCode ? _self.roleCode : roleCode // ignore: cast_nullable_to_non_nullable
+as String,roleDisplayName: null == roleDisplayName ? _self.roleDisplayName : roleDisplayName // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+}
+
+
+/// Adds pattern-matching-related methods to [AssignableInstructor].
+extension AssignableInstructorPatterns on AssignableInstructor {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>(TResult Function( _AssignableInstructor value)?  $default,{required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case _AssignableInstructor() when $default != null:
+return $default(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>(TResult Function( _AssignableInstructor value)  $default,){
+final _that = this;
+switch (_that) {
+case _AssignableInstructor():
+return $default(_that);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>(TResult? Function( _AssignableInstructor value)?  $default,){
+final _that = this;
+switch (_that) {
+case _AssignableInstructor() when $default != null:
+return $default(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function(@JsonKey(name: 'user_id')  String userId, @JsonKey(name: 'display_name')  String displayName, @JsonKey(name: 'role_code')  String roleCode, @JsonKey(name: 'role_display_name')  String roleDisplayName)?  $default,{required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case _AssignableInstructor() when $default != null:
+return $default(_that.userId,_that.displayName,_that.roleCode,_that.roleDisplayName);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function(@JsonKey(name: 'user_id')  String userId, @JsonKey(name: 'display_name')  String displayName, @JsonKey(name: 'role_code')  String roleCode, @JsonKey(name: 'role_display_name')  String roleDisplayName)  $default,) {final _that = this;
+switch (_that) {
+case _AssignableInstructor():
+return $default(_that.userId,_that.displayName,_that.roleCode,_that.roleDisplayName);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function(@JsonKey(name: 'user_id')  String userId, @JsonKey(name: 'display_name')  String displayName, @JsonKey(name: 'role_code')  String roleCode, @JsonKey(name: 'role_display_name')  String roleDisplayName)?  $default,) {final _that = this;
+switch (_that) {
+case _AssignableInstructor() when $default != null:
+return $default(_that.userId,_that.displayName,_that.roleCode,_that.roleDisplayName);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+@JsonSerializable()
+
+class _AssignableInstructor implements AssignableInstructor {
+  const _AssignableInstructor({@JsonKey(name: 'user_id') required this.userId, @JsonKey(name: 'display_name') required this.displayName, @JsonKey(name: 'role_code') this.roleCode = '', @JsonKey(name: 'role_display_name') this.roleDisplayName = ''});
+  factory _AssignableInstructor.fromJson(Map<String, dynamic> json) => _$AssignableInstructorFromJson(json);
+
+@override@JsonKey(name: 'user_id') final  String userId;
+@override@JsonKey(name: 'display_name') final  String displayName;
+@override@JsonKey(name: 'role_code') final  String roleCode;
+@override@JsonKey(name: 'role_display_name') final  String roleDisplayName;
+
+/// Create a copy of AssignableInstructor
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+_$AssignableInstructorCopyWith<_AssignableInstructor> get copyWith => __$AssignableInstructorCopyWithImpl<_AssignableInstructor>(this, _$identity);
+
+@override
+Map<String, dynamic> toJson() {
+  return _$AssignableInstructorToJson(this, );
+}
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _AssignableInstructor&&(identical(other.userId, userId) || other.userId == userId)&&(identical(other.displayName, displayName) || other.displayName == displayName)&&(identical(other.roleCode, roleCode) || other.roleCode == roleCode)&&(identical(other.roleDisplayName, roleDisplayName) || other.roleDisplayName == roleDisplayName));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+    return Object.hash(runtimeType,userId,displayName,roleCode,roleDisplayName);
+}
+
+@override
+String toString() {
+    return 'AssignableInstructor(userId: $userId, displayName: $displayName, roleCode: $roleCode, roleDisplayName: $roleDisplayName)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class _$AssignableInstructorCopyWith<$Res> implements $AssignableInstructorCopyWith<$Res> {
+  factory _$AssignableInstructorCopyWith(_AssignableInstructor value, $Res Function(_AssignableInstructor) _then) = __$AssignableInstructorCopyWithImpl;
+@override @useResult
+$Res call({
+@JsonKey(name: 'user_id') String userId,@JsonKey(name: 'display_name') String displayName,@JsonKey(name: 'role_code') String roleCode,@JsonKey(name: 'role_display_name') String roleDisplayName
+});
+
+
+
+
+}
+/// @nodoc
+class __$AssignableInstructorCopyWithImpl<$Res>
+    implements _$AssignableInstructorCopyWith<$Res> {
+  __$AssignableInstructorCopyWithImpl(this._self, this._then);
+
+  final _AssignableInstructor _self;
+  final $Res Function(_AssignableInstructor) _then;
+
+/// Create a copy of AssignableInstructor
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? userId = null,Object? displayName = null,Object? roleCode = null,Object? roleDisplayName = null,}) {
+  return _then(_AssignableInstructor(
+userId: null == userId ? _self.userId : userId // ignore: cast_nullable_to_non_nullable
+as String,displayName: null == displayName ? _self.displayName : displayName // ignore: cast_nullable_to_non_nullable
+as String,roleCode: null == roleCode ? _self.roleCode : roleCode // ignore: cast_nullable_to_non_nullable
+as String,roleDisplayName: null == roleDisplayName ? _self.roleDisplayName : roleDisplayName // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
 // dart format on
