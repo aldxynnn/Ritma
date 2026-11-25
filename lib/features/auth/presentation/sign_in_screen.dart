@@ -300,7 +300,10 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                         ),
                       ),
                       ActionChip(
-                        avatar: const Icon(Icons.desk_outlined, size: 16),
+                        avatar: const Icon(
+                          Icons.support_agent_outlined,
+                          size: 16,
+                        ),
                         label: const Text('Receptionist'),
                         onPressed: () => _fillCredentials(
                           'demo.receptionist@ritma.app',
