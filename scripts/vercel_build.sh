@@ -55,4 +55,23 @@ if [[ ! -f "build/web/main.dart.js" ]]; then
   exit 1
 fi
 
-echo "Verified Flutter Web release bundle at build/web (base-href /)."
+if [[ ! -f "build/web/assets/fonts/MaterialIcons-Regular.otf" ]] || [[ ! -f "build/web/assets/FontManifest.json" ]]; then
+  echo "ERROR: build/web/assets font files missing after release build." >&2
+  exit 1
+fi
+
+ASSET_HASH="$(
+  find build/web/assets -type f | LC_ALL=C sort | xargs sha256sum | sha256sum | cut -c1-12
+)"
+mkdir -p "build/web/assets-v/${ASSET_HASH}"
+cp -R build/web/assets "build/web/assets-v/${ASSET_HASH}/assets"
+
+sed -i.bak "s|const ritmaAssetBase = \"\";|const ritmaAssetBase = \"/assets-v/${ASSET_HASH}/\";|" build/web/flutter_bootstrap.js
+rm -f build/web/flutter_bootstrap.js.bak
+
+if ! grep -q "const ritmaAssetBase = \"/assets-v/${ASSET_HASH}/\";" build/web/flutter_bootstrap.js; then
+  echo "ERROR: Failed to configure versioned assetBase in build/web/flutter_bootstrap.js." >&2
+  exit 1
+fi
+
+echo "Verified Flutter Web release bundle at build/web (base-href /, assetBase /assets-v/${ASSET_HASH}/)."

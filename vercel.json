@@ -5,7 +5,7 @@
   "outputDirectory": "build/web",
   "headers": [
     {
-      "source": "/(index\\.html|flutter_bootstrap\\.js|flutter_service_worker\\.js|version\\.json|manifest\\.json)",
+      "source": "/(index\\.html|flutter_bootstrap\\.js|flutter_service_worker\\.js|version\\.json|manifest\\.json|main\\.dart\\.js|main\\.dart\\.wasm)",
       "headers": [
         {
           "key": "Cache-Control",
@@ -14,7 +14,16 @@
       ]
     },
     {
-      "source": "/(assets|canvaskit|icons)/(.*)",
+      "source": "/(assets|icons)/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/(assets-v|canvaskit)/(.*)",
       "headers": [
         {
           "key": "Cache-Control",
@@ -25,7 +34,7 @@
   ],
   "rewrites": [
     {
-      "source": "/((?!assets/|canvaskit/|icons/|flutter_bootstrap\\.js|flutter\\.js|flutter_service_worker\\.js|main\\.dart\\.js|main\\.dart\\.wasm|manifest\\.json|favicon\\.png|version\\.json).*)",
+      "source": "/((?!assets/|assets-v/|canvaskit/|icons/|flutter_bootstrap\\.js|flutter\\.js|flutter_service_worker\\.js|main\\.dart\\.js|main\\.dart\\.wasm|manifest\\.json|favicon\\.png|version\\.json).*)",
       "destination": "/index.html"
     }
   ]
